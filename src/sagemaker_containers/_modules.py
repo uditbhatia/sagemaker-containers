@@ -171,7 +171,7 @@ def download_and_install(uri, name=DEFAULT_MODULE_NAME, cache=True):
             install(module_path)
 
 
-def run(module_name, args=None, env_vars=None, wait=True):  # type: (str, list, dict, bool) -> Popen
+def run(module_name_or_script, args=None, env_vars=None, wait=True, bash=False):  # type: (str, list, dict, bool) -> Popen
     """Run Python module as a script.
 
     Search sys.path for the named module and execute its contents as the __main__ module.
@@ -223,7 +223,10 @@ def run(module_name, args=None, env_vars=None, wait=True):  # type: (str, list, 
     args = args or []
     env_vars = env_vars or {}
 
-    cmd = [python_executable(), '-m', module_name] + args
+    if bash:
+        cmd = [module_name_or_script] + args
+    else:
+        cmd = [python_executable(), '-m', module_name_or_script] + args
 
     _logging.log_script_invocation(cmd, env_vars)
 
