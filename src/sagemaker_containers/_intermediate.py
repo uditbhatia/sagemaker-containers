@@ -39,20 +39,26 @@ def _timestamp():
 
 
 def _upload_to_s3(s3_uploader, relative_path, filename):
-    file_path = os.path.join(tmp_dir_path, relative_path, filename)
-    print('Upload to s3: {}'.format(file_path))
-    # We know the exact length of the timestamp (24) we are adding to the filename
-    key = os.path.join(s3_uploader['key_prefix'], relative_path, filename[24:])
-    s3_uploader['transfer'].upload_file(file_path, s3_uploader['bucket'], key)
-    print('Uploaded to s3: {}'.format(key))
+    try:
+        file_path = os.path.join(tmp_dir_path, relative_path, filename)
+        print('Upload to s3: {}'.format(file_path))
+        # We know the exact length of the timestamp (24) we are adding to the filename
+        key = os.path.join(s3_uploader['key_prefix'], relative_path, filename[24:])
+        s3_uploader['transfer'].upload_file(file_path, s3_uploader['bucket'], key)
+        print('Uploaded to s3: {}'.format(key))
+    except Exception as e:
+        print('_upload_to_s3 failed: {}'.format(str(e)))
 
 
 def _move_file(relative_path, file):
     print('moving file : {}'.format(os.path.join(intermediate_path, relative_path, file)))
-    new_filename = '{}.{}'.format(_timestamp(), file)
-    shutil.move(os.path.join(intermediate_path, relative_path, file),
-                os.path.join(tmp_dir_path, relative_path, new_filename))
-    return new_filename
+    try:
+        new_filename = '{}.{}'.format(_timestamp(), file)
+        shutil.move(os.path.join(intermediate_path, relative_path, file),
+                    os.path.join(tmp_dir_path, relative_path, new_filename))
+        return new_filename
+    except Exception as e:
+        print('_move_file failed: {}'.format(str(e)))
 
 
 def _watch(inotify, watchers, watch_flags, s3_uploader):
