@@ -15,7 +15,7 @@ import os
 import traceback
 
 import sagemaker_containers
-from sagemaker_containers import _errors, _files, _logging
+from sagemaker_containers import _errors, _files, _intermediate, _logging, _params
 
 logger = _logging.get_logger()
 
@@ -37,10 +37,18 @@ def _exit_processes(exit_code):  # type:
 
 
 def train():
+    intemediate_sync = None
     try:
         # TODO: iquintero - add error handling for ImportError to let the user know
         # if the framework module is not defined.
         env = sagemaker_containers.training_env()
+
+        # TODO: There is a bug in the logic - we need os.environ.get(_params.REGION_NAME_ENV)
+        # in certain regions, but it is not going to be available unless
+        # TrainingEnvironment has been initialized. It shouldn't be environment variable.
+        region = os.environ.get('AWS_REGION', os.environ.get(_params.REGION_NAME_ENV))
+        intemediate_sync = _intermediate.start_intermediate_folder_sync(env.sagemaker_s3_output,
+                                                                        region)
 
         framework_name, entry_point_name = env.framework_module.split(':')
 
@@ -58,6 +66,10 @@ def train():
 
         logger.info('Reporting training SUCCESS')
         _files.write_success_file()
+
+        if intemediate_sync:
+            intemediate_sync.join()
+
         _exit_processes(SUCCESS_CODE)
 
     except _errors.ClientError as e:
@@ -66,6 +78,10 @@ def train():
         _files.write_failure_file(failure_message)
 
         logger.error(failure_message)
+
+        if intemediate_sync:
+            intemediate_sync.join()
+
         _exit_processes(DEFAULT_FAILURE_CODE)
     except Exception as e:
         failure_msg = 'framework error: \n%s\n%s' % (traceback.format_exc(), str(e))
@@ -74,6 +90,9 @@ def train():
         logger.error('Reporting training FAILURE')
 
         logger.error(failure_msg)
+
+        if intemediate_sync:
+            intemediate_sync.join()
 
         exit_code = getattr(e, 'errno', DEFAULT_FAILURE_CODE)
         _exit_processes(exit_code)

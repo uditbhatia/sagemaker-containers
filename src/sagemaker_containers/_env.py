@@ -128,6 +128,16 @@ Returns:
 
 output_data_dir = os.path.join(output_dir, 'data')  # type: str
 
+output_intermediate_dir = os.path.join(output_dir, 'intermediate')  # type: str
+"""str: the path to the intermediate output directory, e.g. /opt/ml/output/intermediate.
+
+The directory special behavior is to move artifacts from the training instance to 
+s3 directory during training. 
+Returns:
+    str: the path to the intermediate output directory, e.g. /opt/ml/output/intermediate.
+"""
+
+
 HYPERPARAMETERS_FILE = 'hyperparameters.json'  # type: str
 RESOURCE_CONFIG_FILE = 'resourceconfig.json'  # type: str
 INPUT_DATA_CONFIG_FILE = 'inputdataconfig.json'  # type: str
@@ -539,6 +549,8 @@ class TrainingEnv(_Env):
             self._module_name = str(sagemaker_hyperparameters.get(_params.USER_PROGRAM_PARAM, None))
         self._module_dir = str(sagemaker_hyperparameters.get(_params.SUBMIT_DIR_PARAM, code_dir))
         self._log_level = sagemaker_hyperparameters.get(_params.LOG_LEVEL_PARAM, logging.INFO)
+        self._sagemaker_s3_output = sagemaker_hyperparameters.get(_params.S3_OUTPUT_LOCATION_PARAM,
+                                                                  None)
         self._framework_module = os.environ.get(_params.FRAMEWORK_TRAINING_MODULE_ENV, None)
 
         self._input_dir = input_dir
@@ -567,6 +579,17 @@ class TrainingEnv(_Env):
         """
         return self._additional_framework_parameters
 
+
+    @property
+    def sagemaker_s3_output(self):  # type: () -> str
+        """s3 output directory location provided by the user.
+
+        Returns:
+            str: s3 location uri.
+        """
+        return self._sagemaker_s3_output
+
+
     def to_cmd_args(self):
         """Command line arguments representation of the training environment.
 
@@ -592,7 +615,7 @@ class TrainingEnv(_Env):
             'framework_module': self.framework_module, 'input_dir': self.input_dir,
             'input_config_dir': self.input_config_dir, 'output_dir': self.output_dir, 'num_cpus': self.num_cpus,
             'num_gpus':         self.num_gpus, 'model_dir': self.model_dir, 'module_dir': self.module_dir,
-            'training_env':     dict(self), 'user_args': self.to_cmd_args()
+            'training_env':     dict(self), 'user_args': self.to_cmd_args(),
         }
 
         for name, path in self.channel_input_dirs.items():

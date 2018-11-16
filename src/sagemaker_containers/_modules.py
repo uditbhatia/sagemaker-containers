@@ -45,6 +45,9 @@ def s3_download(url, dst):  # type: (str, str) -> None
 
     bucket, key = url.netloc, url.path.lstrip('/')
 
+    # TODO: There is a bug in the logic - we need os.environ.get(_params.REGION_NAME_ENV)
+    # in certain regions, but it is not going to be available unless
+    # TrainingEnvironment has been initialized. It shouldn't be environment variable.
     region = os.environ.get('AWS_REGION', os.environ.get(_params.REGION_NAME_ENV))
     s3 = boto3.resource('s3', region_name=region)
 
