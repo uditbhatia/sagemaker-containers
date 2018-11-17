@@ -41,10 +41,10 @@ def _timestamp():
 
 def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
     try:
-        #print('Upload to s3: {}'.format(file_path))
+        ##print('Upload to s3: {}'.format(file_path))
         key = os.path.join(s3_uploader['key_prefix'], relative_path, filename)
         s3_uploader['transfer'].upload_file(file_path, s3_uploader['bucket'], key)
-        #print('Uploaded to s3: {}'.format(key))
+        ##print('Uploaded to s3: {}'.format(key))
     except Exception:
         logger.exception('Failed to upload file to s3.')
     finally:
@@ -53,7 +53,7 @@ def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
 
 
 def _move_file(executor, s3_uploader, relative_path, filename):
-    #print('moving file : {}'.format(os.path.join(intermediate_path, relative_path, filename)))
+    ##print('moving file : {}'.format(os.path.join(intermediate_path, relative_path, filename)))
     try:
         src = os.path.join(intermediate_path, relative_path, filename)
         dst = os.path.join(tmp_dir_path, relative_path, '{}.{}'.format(_timestamp(), filename))
@@ -67,7 +67,7 @@ def _move_file(executor, s3_uploader, relative_path, filename):
 
 
 def _watch(inotify, watchers, watch_flags, s3_uploader):
-    print('Starting to listen for updates')
+    #print('Starting to listen for updates')
     # initialize a thread pool with 1 worker
     # to be used for uploading files to s3 in a separate thread
     executor = ThreadPoolExecutor(max_workers=1)
@@ -79,8 +79,8 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
     while not last_pass_done:
         # wait for any events in the directory for 1 sec and then re-check exit conditions
         for event in inotify.read(timeout=1000):
-            print()
-            print(event)
+            #print()
+            #print(event)
             for flag in flags.from_mask(event.mask):
                 if flag is flags.ISDIR:
                     for folder, dirs, files in os.walk(os.path.join(intermediate_path, event.name)):
@@ -98,9 +98,9 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
         stop_file_exists = os.path.exists(success_file_path) or os.path.exists(failure_file_path)
 
     # wait for all the s3 upload tasks to finish and shutdown the executor
-    print('Not listening.')
+    #print('Not listening.')
     executor.shutdown(wait=True)
-    print('==The End==')
+    #print('==The End==')
 
 
 def start_intermediate_folder_sync(s3_output_location, region):
@@ -112,7 +112,7 @@ def start_intermediate_folder_sync(s3_output_location, region):
     #print('region: {}'.format(region))
     #print('os.path.exists(intermediate_path): {}'.format(os.path.exists(intermediate_path)))
     if not s3_output_location or os.path.exists(intermediate_path):
-        print('Could not initialize intermediate folder sync to s3.')
+        logger.debug('Could not initialize intermediate folder sync to s3.')
         return None
 
     # create intermediate and intermediate_tmp directories
