@@ -45,9 +45,16 @@ def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
         key = os.path.join(s3_uploader['key_prefix'], relative_path, filename)
         s3_uploader['transfer'].upload_file(file_path, s3_uploader['bucket'], key)
         print('Uploaded to s3: {}'.format(key))
+
+        # delete the original file
+        print('Deleting file after upload: {}'.format(file_path))
+        os.remove(file_path)
+    except FileNotFoundError:
+        # Broken link or deleted
+        pass
     except Exception:
         logger.exception('Failed to upload file to s3.')
-    finally:
+
         # delete the original file
         print('Deleting file after upload: {}'.format(file_path))
         os.remove(file_path)
