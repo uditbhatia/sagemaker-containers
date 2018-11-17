@@ -41,22 +41,23 @@ def _timestamp():
 
 def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
     try:
-        ##print('Upload to s3: {}'.format(file_path))
+        print('Upload to s3: {}'.format(file_path))
         key = os.path.join(s3_uploader['key_prefix'], relative_path, filename)
         s3_uploader['transfer'].upload_file(file_path, s3_uploader['bucket'], key)
-        ##print('Uploaded to s3: {}'.format(key))
+        print('Uploaded to s3: {}'.format(key))
     except Exception:
         logger.exception('Failed to upload file to s3.')
     finally:
         # delete the original file
+        print('Deleting file after upload: {}'.format(file_path))
         os.remove(file_path)
 
 
 def _move_file(executor, s3_uploader, relative_path, filename):
-    ##print('moving file : {}'.format(os.path.join(intermediate_path, relative_path, filename)))
     try:
         src = os.path.join(intermediate_path, relative_path, filename)
         dst = os.path.join(tmp_dir_path, relative_path, '{}.{}'.format(_timestamp(), filename))
+        print('copying file : "{}" to "{}'.format(src, dst))
         shutil.copy2(src, dst)
         executor.submit(_upload_to_s3, s3_uploader, relative_path, dst, filename)
     except FileNotFoundError:
