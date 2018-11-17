@@ -22,8 +22,9 @@ import time
 
 import boto3
 from boto3.s3.transfer import S3Transfer
-from sagemaker_containers import _env, _params
+from sagemaker_containers import _env, _logging
 
+logger = _logging.get_logger()
 
 intermediate_path = _env.output_intermediate_dir  # type: str
 failure_file_path = os.path.join(_env.output_dir, 'failure')  # type: str
@@ -38,27 +39,31 @@ def _timestamp():
     return time.strftime("%Y-%m-%d-%H-%M-%S-{}".format(moment_ms), time.gmtime(moment))
 
 
-def _upload_to_s3(s3_uploader, relative_path, filename):
+def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
     try:
-        file_path = os.path.join(tmp_dir_path, relative_path, filename)
-        print('Upload to s3: {}'.format(file_path))
-        # We know the exact length of the timestamp (24) we are adding to the filename
-        key = os.path.join(s3_uploader['key_prefix'], relative_path, filename[24:])
+        #print('Upload to s3: {}'.format(file_path))
+        key = os.path.join(s3_uploader['key_prefix'], relative_path, filename)
         s3_uploader['transfer'].upload_file(file_path, s3_uploader['bucket'], key)
-        print('Uploaded to s3: {}'.format(key))
-    except Exception as e:
-        print('_upload_to_s3 failed: {}'.format(str(e)))
+        #print('Uploaded to s3: {}'.format(key))
+    except Exception:
+        logger.exception('Failed to upload file to s3.')
+    finally:
+        # delete the original file
+        os.remove(file_path)
 
 
-def _move_file(relative_path, file):
-    print('moving file : {}'.format(os.path.join(intermediate_path, relative_path, file)))
+def _move_file(executor, s3_uploader, relative_path, filename):
+    #print('moving file : {}'.format(os.path.join(intermediate_path, relative_path, filename)))
     try:
-        new_filename = '{}.{}'.format(_timestamp(), file)
-        shutil.move(os.path.join(intermediate_path, relative_path, file),
-                    os.path.join(tmp_dir_path, relative_path, new_filename))
-        return new_filename
-    except Exception as e:
-        print('_move_file failed: {}'.format(str(e)))
+        src = os.path.join(intermediate_path, relative_path, filename)
+        dst = os.path.join(tmp_dir_path, relative_path, '{}.{}'.format(_timestamp(), filename))
+        shutil.copy2(src, dst)
+        executor.submit(_upload_to_s3, s3_uploader, relative_path, dst, filename)
+    except FileNotFoundError:
+        # Broken link or deleted
+        pass
+    except Exception:
+        logger.exception('Failed to copy file to the temporarily directory.')
 
 
 def _watch(inotify, watchers, watch_flags, s3_uploader):
@@ -85,11 +90,9 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
                         os.makedirs(os.path.join(tmp_dir_path,
                                                  relative_path))
                         for file in files:
-                            filename = _move_file(relative_path, file)
-                            executor.submit(_upload_to_s3, s3_uploader, relative_path, filename)
+                            _move_file(executor, s3_uploader, relative_path, file)
                 elif flag is flags.CLOSE_WRITE:
-                    filename = _move_file(watchers[event.wd], event.name)
-                    executor.submit(_upload_to_s3, s3_uploader, watchers[event.wd], filename)
+                    _move_file(executor, s3_uploader, watchers[event.wd], event.name)
 
         last_pass_done = stop_file_exists
         stop_file_exists = os.path.exists(success_file_path) or os.path.exists(failure_file_path)
@@ -105,9 +108,9 @@ def start_intermediate_folder_sync(s3_output_location, region):
     If it does - it indicates that platform is taking care of syncing files to S3
     and container should not interfere.
     """
-    print('s3_output_location: {}'.format(s3_output_location))
-    print('region: {}'.format(region))
-    print('os.path.exists(intermediate_path): {}'.format(os.path.exists(intermediate_path)))
+    #print('s3_output_location: {}'.format(s3_output_location))
+    #print('region: {}'.format(region))
+    #print('os.path.exists(intermediate_path): {}'.format(os.path.exists(intermediate_path)))
     if not s3_output_location or os.path.exists(intermediate_path):
         print('Could not initialize intermediate folder sync to s3.')
         return None
@@ -117,7 +120,7 @@ def start_intermediate_folder_sync(s3_output_location, region):
     os.makedirs(tmp_dir_path)
 
     # configure unique s3 output location similar to how SageMaker platform does it
-    s3_output_location = os.path.join(s3_output_location, os.environ.get('TRAINING_JOB_NAME', None),
+    s3_output_location = os.path.join(s3_output_location, os.environ.get('TRAINING_JOB_NAME', ''),
                                       'output', 'intermediate')
     url = urlparse(s3_output_location)
     if url.scheme != 's3':
