@@ -33,10 +33,10 @@ tmp_dir_path = os.path.join(intermediate_path, '.tmp.sagemaker_s3_sync')  # type
 
 
 def _timestamp():
-    """Return a timestamp with millisecond precision."""
+    """Return a timestamp with microsecond precision."""
     moment = time.time()
-    moment_ms = repr(moment).split('.')[1][:3]
-    return time.strftime("%Y-%m-%d-%H-%M-%S-{}".format(moment_ms), time.gmtime(moment))
+    moment_us = repr(moment).split('.')[1]
+    return time.strftime("%Y-%m-%d-%H-%M-%S-{}".format(moment_us), time.gmtime(moment))
 
 
 def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
