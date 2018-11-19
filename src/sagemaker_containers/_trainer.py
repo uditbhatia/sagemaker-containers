@@ -15,7 +15,7 @@ import os
 import traceback
 
 import sagemaker_containers
-from sagemaker_containers import _errors, _files, _intermediate, _logging, _params
+from sagemaker_containers import _errors, _files, _intermediate_output, _logging, _params
 
 logger = _logging.get_logger()
 
@@ -47,8 +47,8 @@ def train():
         # in certain regions, but it is not going to be available unless
         # TrainingEnvironment has been initialized. It shouldn't be environment variable.
         region = os.environ.get('AWS_REGION', os.environ.get(_params.REGION_NAME_ENV))
-        intemediate_sync = _intermediate.start_intermediate_folder_sync(env.sagemaker_s3_output,
-                                                                        region)
+        intemediate_sync = _intermediate_output.start_intermediate_folder_sync(
+            env.sagemaker_s3_output, region)
 
         framework_name, entry_point_name = env.framework_module.split(':')
 
