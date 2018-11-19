@@ -41,13 +41,10 @@ def _timestamp():
 
 def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
     try:
-        #print('Upload to s3: {}'.format(file_path))
         key = os.path.join(s3_uploader['key_prefix'], relative_path, filename)
         s3_uploader['transfer'].upload_file(file_path, s3_uploader['bucket'], key)
-        #print('Uploaded to s3: {}'.format(key))
 
         # delete the original file
-        #print('Deleting file after upload: {}'.format(file_path))
         os.remove(file_path)
     except FileNotFoundError:
         # Broken link or deleted
@@ -56,7 +53,6 @@ def _upload_to_s3(s3_uploader, relative_path, file_path, filename):
         logger.exception('Failed to upload file to s3.')
 
         # delete the original file
-        #print('Deleting file after upload: {}'.format(file_path))
         os.remove(file_path)
 
 
@@ -64,7 +60,6 @@ def _move_file(executor, s3_uploader, relative_path, filename):
     try:
         src = os.path.join(intermediate_path, relative_path, filename)
         dst = os.path.join(tmp_dir_path, relative_path, '{}.{}'.format(_timestamp(), filename))
-        #print('copying file : "{}" to "{}'.format(src, dst))
         shutil.copy2(src, dst)
         executor.submit(_upload_to_s3, s3_uploader, relative_path, dst, filename)
     except FileNotFoundError:
@@ -75,7 +70,6 @@ def _move_file(executor, s3_uploader, relative_path, filename):
 
 
 def _watch(inotify, watchers, watch_flags, s3_uploader):
-    #print('Starting to listen for updates')
     # initialize a thread pool with 1 worker
     # to be used for uploading files to s3 in a separate thread
     executor = ThreadPoolExecutor(max_workers=1)
@@ -87,8 +81,6 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
     while not last_pass_done:
         # wait for any events in the directory for 1 sec and then re-check exit conditions
         for event in inotify.read(timeout=1000):
-            #print()
-            #print(event)
             for flag in flags.from_mask(event.mask):
                 if flag is flags.ISDIR:
                     for folder, dirs, files in os.walk(os.path.join(intermediate_path, event.name)):
@@ -106,9 +98,7 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
         stop_file_exists = os.path.exists(success_file_path) or os.path.exists(failure_file_path)
 
     # wait for all the s3 upload tasks to finish and shutdown the executor
-    #print('Not listening.')
     executor.shutdown(wait=True)
-    #print('==The End==')
 
 
 def start_intermediate_folder_sync(s3_output_location, region):
@@ -116,9 +106,6 @@ def start_intermediate_folder_sync(s3_output_location, region):
     If it does - it indicates that platform is taking care of syncing files to S3
     and container should not interfere.
     """
-    #print('s3_output_location: {}'.format(s3_output_location))
-    #print('region: {}'.format(region))
-    #print('os.path.exists(intermediate_path): {}'.format(os.path.exists(intermediate_path)))
     if not s3_output_location or os.path.exists(intermediate_path):
         logger.debug('Could not initialize intermediate folder sync to s3.')
         return None
@@ -128,10 +115,12 @@ def start_intermediate_folder_sync(s3_output_location, region):
     os.makedirs(tmp_dir_path)
 
     # configure unique s3 output location similar to how SageMaker platform does it
-    s3_output_location = os.path.join(s3_output_location, os.environ.get('TRAINING_JOB_NAME', ''),
-                                      'output', 'intermediate')
+    # or link it to the local output directory
     url = urlparse(s3_output_location)
-    if url.scheme != 's3':
+    if url.scheme == 'file':
+        logger.debug('Local directory is used for output. No need to sync any intermediate output.')
+        return
+    elif url.scheme != 's3':
         raise ValueError("Expecting 's3' scheme, got: %s in %s" % (url.scheme, url))
 
     # create s3 transfer client
@@ -140,7 +129,8 @@ def start_intermediate_folder_sync(s3_output_location, region):
     s3_uploader = {
         'transfer': s3_transfer,
         'bucket': url.netloc,
-        'key_prefix': url.path.lstrip('/'),
+        'key_prefix': os.path.join(url.path.lstrip('/'), os.environ.get('TRAINING_JOB_NAME', ''),
+                                   'output', 'intermediate'),
     }
 
     # Add intermediate folder to the watch list
