@@ -16,7 +16,7 @@ import traceback
 
 import sagemaker_containers
 
-from sagemaker_containers import _intermediate_output
+from sagemaker_containers import _intermediate_output, _params
 from sagemaker_containers.beta.framework import entry_point, errors, files, logging
 
 logger = logging.get_logger()
