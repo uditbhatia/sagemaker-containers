@@ -12,11 +12,11 @@
 # language governing permissions and limitations under the License.
 from __future__ import absolute_import
 
-from mock import Mock, MagicMock, PropertyMock
-from mock import call, mock_open, patch
+from mock import Mock, MagicMock, PropertyMock, call, mock_open, patch
+import os
 import pytest
 
-from sagemaker_containers import _files, _intermediate_output
+from sagemaker_containers import _env, _files, _intermediate_output
 
 from inotify_simple import Event, flags
 
@@ -102,3 +102,38 @@ def test_modification_triggers_upload(process_mock, upload_file, inotify_mock, c
     inotify.read.assert_called()
     copy2.assert_called()
     upload_file.assert_called()
+
+
+@patch('boto3.client', MagicMock())
+@patch('shutil.copy2')
+@patch('inotify_simple.INotify')
+@patch('boto3.s3.transfer.S3Transfer.upload_file')
+@patch('multiprocessing.Process')
+def test_new_folders_are_watched(process_mock, upload_file, inotify_mock, copy2):
+    process = process_mock.return_value
+    inotify = inotify_mock.return_value
+
+    new_dir = 'new_dir'
+    new_dir_path = os.path.join(_env.output_intermediate_dir, new_dir)
+    inotify.add_watch.return_value = 'wd'
+    inotify.read.return_value = [Event('wd', flags.CREATE | flags.ISDIR, 'cookie', new_dir)]
+
+    def watch():
+        os.makedirs(new_dir_path)
+
+        call = process_mock.call_args
+        args, kwargs = call
+        _intermediate_output._watch(kwargs['args'][0], kwargs['args'][1],
+                                    kwargs['args'][2], kwargs['args'][3])
+
+    process.start.side_effect = watch
+
+    _files.write_success_file()
+    _intermediate_output.start_intermediate_folder_sync(S3_BUCKET, REGION)
+
+    watch_flags = flags.CLOSE_WRITE | flags.CREATE
+    inotify.add_watch.assert_any_call(_env.output_intermediate_dir, watch_flags)
+    inotify.add_watch.assert_any_call(new_dir_path, watch_flags)
+    inotify.read.assert_called()
+    copy2.assert_not_called()
+    upload_file.assert_not_called()

@@ -97,12 +97,14 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
                 # There is a potential race condition if upload the file and the see a notification
                 # for it which should cause any problems because when we copy files to temp dir
                 # we add a unique timestamp up to microseconds.
-                if flag is inotify_simple.flags.ISDIR:
+                if flag is inotify_simple.flags.ISDIR and inotify_simple.flags.CREATE & event.mask:
                     for folder, dirs, files in os.walk(os.path.join(intermediate_path, event.name)):
                         wd = inotify.add_watch(folder, watch_flags)
                         relative_path = os.path.relpath(folder, intermediate_path)
                         watchers[wd] = relative_path
-                        os.makedirs(os.path.join(tmp_dir_path, relative_path))
+                        tmp_sub_folder = os.path.join(tmp_dir_path, relative_path)
+                        if not os.path.exists(tmp_sub_folder):
+                            os.makedirs(tmp_sub_folder)
                         for file in files:
                             _copy_file(executor, s3_uploader, relative_path, file)
                 elif flag is inotify_simple.flags.CLOSE_WRITE:
