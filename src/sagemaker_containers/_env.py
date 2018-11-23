@@ -20,6 +20,7 @@ import os
 import shlex
 import socket
 import subprocess
+import sys
 import time
 
 import boto3
@@ -172,6 +173,15 @@ if not _is_path_configured:
     _create_training_directories()
 
 
+def _create_code_dir():  # type: () -> None
+    """Creates /opt/ml/code when the module is imported."""
+    if not os.path.exists(code_dir):
+        os.makedirs(code_dir)
+
+
+_create_code_dir()
+
+
 def _read_json(path):  # type: (str) -> dict
     """Read a JSON file.
 
@@ -320,6 +330,7 @@ class _Env(_mapping.MappingMixin):
         self._num_gpus = num_gpus()
         self._num_cpus = num_cpus()
         self._module_name = module_name
+        self._user_entry_point = module_name
         self._module_dir = module_dir
         self._log_level = log_level
         self._model_dir = model_dir
@@ -377,6 +388,14 @@ class _Env(_mapping.MappingMixin):
             int: environment logging level.
         """
         return self._log_level
+
+    @property
+    def user_entry_point(self):  # type: () -> str
+        """The name of provided user entry point.
+        Returns:
+            str: The name of provided user entry point
+        """
+        return self._user_entry_point
 
     @staticmethod
     def _parse_module_name(program_param):
@@ -547,6 +566,8 @@ class TrainingEnv(_Env):
         # override base class attributes
         if self._module_name is None:
             self._module_name = str(sagemaker_hyperparameters.get(_params.USER_PROGRAM_PARAM, None))
+        self._user_entry_point = self._user_entry_point or sagemaker_hyperparameters.get(_params.USER_PROGRAM_PARAM)
+
         self._module_dir = str(sagemaker_hyperparameters.get(_params.SUBMIT_DIR_PARAM, code_dir))
         self._log_level = sagemaker_hyperparameters.get(_params.LOG_LEVEL_PARAM, logging.INFO)
         self._sagemaker_s3_output = sagemaker_hyperparameters.get(_params.S3_OUTPUT_LOCATION_PARAM,
@@ -607,7 +628,7 @@ class TrainingEnv(_Env):
 
         env = {
             'hosts':            self.hosts, 'network_interface_name': self.network_interface_name,
-            'hps':              self.hyperparameters,
+            'hps':              self.hyperparameters, 'user_entry_point': self.user_entry_point,
             'framework_params': self.additional_framework_parameters,
             'resource_config':  self.resource_config, 'input_data_config': self.input_data_config,
             'output_data_dir':  self.output_data_dir, 'channels': sorted(self.channel_input_dirs.keys()),
@@ -793,6 +814,11 @@ class ServingEnv(_Env):
                 as specified in the user-supplied SAGEMAKER_DEFAULT_INVOCATIONS_ACCEPT environment
                 variable. Otherwise, returns 'application/json' by default.
                 For example: application/json
+            http_port (str): Port that SageMaker will use to handle invocations and pings against the
+                running Docker container. Default is 8080. For example: 8080
+            safe_port_range (str): HTTP port range that can be used by customers to avoid collisions
+                with the HTTP port specified by SageMaker for handling pings and invocations.
+                For example: 1111-2222
     """
 
     def __init__(self):
@@ -803,12 +829,16 @@ class ServingEnv(_Env):
         model_server_workers = int(os.environ.get(_params.MODEL_SERVER_WORKERS_ENV, num_cpus()))
         framework_module = os.environ.get(_params.FRAMEWORK_SERVING_MODULE_ENV, None)
         default_accept = os.environ.get(_params.DEFAULT_INVOCATIONS_ACCEPT_ENV, _content_types.JSON)
+        http_port = os.environ.get(_params.SAGEMAKER_BIND_TO_PORT_ENV, '8080')
+        safe_port_range = os.environ.get(_params.SAGEMAKER_SAFE_PORT_RANGE_ENV)
 
         self._use_nginx = use_nginx
         self._model_server_timeout = model_server_timeout
         self._model_server_workers = model_server_workers
         self._framework_module = framework_module
         self._default_accept = default_accept
+        self._http_port = http_port
+        self._safe_port_range = safe_port_range
 
     @property
     def use_nginx(self):  # type: () -> bool
@@ -842,3 +872,33 @@ class ServingEnv(_Env):
             str: The desired MIME type of the inference in the response. For example: application/json.
                 Default: application/json"""
         return self._default_accept
+
+    @property
+    def http_port(self):  # type: () -> str
+        """Returns:
+            str: HTTP port that SageMaker will use to handle invocations and pings against the running
+                Docker container. Default is 8080. For example: 8080"""
+        return self._http_port
+
+    @property
+    def safe_port_range(self):  # type: () -> str
+        """Returns:
+            str: HTTP port range that can be used by customers to avoid collisions with the HTTP port
+                specified by SageMaker for handling pings and invocations. For example: 1111-2222"""
+        return self._safe_port_range
+
+
+def write_env_vars(env_vars=None):  # type: (dict) -> None
+    """Write the dictionary env_vars in the system, as environment variables.
+
+    Args:
+        env_vars ():
+
+    Returns:
+
+    """
+    env_vars = env_vars or {}
+    env_vars['PYTHONPATH'] = ':'.join(sys.path)
+
+    for name, value in env_vars.items():
+        os.environ[name] = value

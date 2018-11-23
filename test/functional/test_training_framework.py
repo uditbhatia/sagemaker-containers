@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 import sagemaker_containers
-from sagemaker_containers.beta.framework import env, errors, functions, modules, trainer
+from sagemaker_containers.beta.framework import entry_point, env, errors, functions, modules, trainer
 import test
 from test import fake_ml_framework
 
@@ -101,7 +101,7 @@ parser.add_argument('--model_dir', type=str)
 
 args = parser.parse_args()
 
-data = np.load(args.training_data_file)
+data = np.load(os.path.join(os.environ['SM_CHANNEL_TRAINING'], args.training_data_file))
 x_train = data['features']
 y_train = data['labels']
 
@@ -109,9 +109,11 @@ model = fake_ml.Model(loss='elastic', optimizer='SGD')
 
 model.fit(x=x_train, y=y_train, epochs=args.epochs, batch_size=args.batch_size)
 
-model_file = os.path.join(args.model_dir, 'saved_model')
+model_file = os.path.join(os.environ['SM_MODEL_DIR'], 'saved_model')
 model.save(model_file)
 """
+
+BASH_SCRIPT = '#!/usr/bin/env python\n%s' % USER_MODE_SCRIPT
 
 PARAMETER_SERVER_SCRIPT = """
 from time import sleep
@@ -120,6 +122,14 @@ while True:
     print('Running parameter server')
     sleep(1)
 """
+
+setup_file = test.File('setup.py', """
+from setuptools import setup
+setup(packages=[''],
+      name="user_script",
+      version='1.0.0',
+      include_package_data=True)
+""")
 
 
 def framework_training_fn():
@@ -137,8 +147,9 @@ def framework_training_fn():
             model.save(model_file)
 
 
-@pytest.mark.parametrize('user_script', [USER_SCRIPT_WITH_SAVE, USER_SCRIPT_WITH_SAVE])
-def test_training_framework(user_script):
+@pytest.mark.parametrize('user_script, capture_error',
+                         [[USER_SCRIPT_WITH_SAVE, False], [USER_SCRIPT_WITH_SAVE, True]])
+def test_training_framework(user_script, capture_error):
     with pytest.raises(ImportError):
         importlib.import_module(modules.DEFAULT_MODULE_NAME)
 
@@ -148,7 +159,8 @@ def test_training_framework(user_script):
     labels = [0, 1, 0, 1]
     np.savez(os.path.join(channel.path, 'training_data'), features=features, labels=labels)
 
-    module = test.UserModule(test.File(name='user_script.py', data=user_script))
+    file = test.File(name='user_script.py', data=user_script)
+    module = test.UserModule(file).add_file(setup_file)
 
     hyperparameters = dict(training_data_file='training_data.npz', sagemaker_program='user_script.py', epochs=10,
                            batch_size=64, optimizer='Adam')
@@ -165,10 +177,11 @@ def test_training_framework(user_script):
     assert model.optimizer == 'Adam'
 
 
-@pytest.mark.parametrize('user_script', [USER_SCRIPT, USER_SCRIPT_WITH_SAVE])
-def test_trainer_report_success(user_script):
-    with pytest.raises(ImportError):
-        importlib.import_module(modules.DEFAULT_MODULE_NAME)
+@pytest.mark.parametrize('user_script, sagemaker_program', [
+    [USER_MODE_SCRIPT, 'user_script.py'],
+    [BASH_SCRIPT, 'bash_script']
+])
+def test_trainer_report_success(user_script, sagemaker_program):
 
     channel = test.Channel.create(name='training')
 
@@ -176,14 +189,12 @@ def test_trainer_report_success(user_script):
     labels = [0, 1, 0, 1]
     np.savez(os.path.join(channel.path, 'training_data'), features=features, labels=labels)
 
-    module = test.UserModule(test.File(name='user_script.py', data=user_script))
+    module = test.UserModule(test.File(name=sagemaker_program, data=user_script))
 
-    hyperparameters = dict(training_data_file='training_data.npz', sagemaker_program='user_script.py', epochs=10,
-                           batch_size=64, optimizer='SGD')
+    hyperparameters = dict(training_data_file='training_data.npz', sagemaker_program=sagemaker_program, epochs=10,
+                           batch_size=64)
 
     test.prepare(user_module=module, hyperparameters=hyperparameters, channels=[channel])
-
-    os.environ['SAGEMAKER_TRAINING_MODULE'] = 'test.functional.simple_framework:train'
 
     assert execute_an_wrap_exit(trainer.train) == trainer.SUCCESS_CODE
 
@@ -204,7 +215,7 @@ def test_trainer_report_failure():
     labels = [0, 1, 0, 1]
     np.savez(os.path.join(channel.path, 'training_data'), features=features, labels=labels)
 
-    module = test.UserModule(test.File(name='user_script.py', data=USER_SCRIPT_WITH_EXCEPTION))
+    module = test.UserModule(test.File(name='user_script.py', data=USER_SCRIPT_WITH_EXCEPTION)).add_file(setup_file)
 
     hyperparameters = dict(training_data_file='training_data.npz', sagemaker_program='user_script.py', epochs=10,
                            batch_size=64)
@@ -224,11 +235,19 @@ def test_trainer_report_failure():
     assert 'No such file or directory' in message
 
 
-def framework_training_with_script_mode_fn():
+def framework_training_with_script_mode_fn(capture_error):
     training_env = sagemaker_containers.training_env()
 
-    modules.run_module(training_env.module_dir, training_env.to_cmd_args(), training_env.to_env_vars(),
-                       training_env.module_name, cache=False)
+    entry_point.run(training_env.module_dir, training_env.user_entry_point, training_env.to_cmd_args(),
+                    training_env.to_env_vars(), capture_error=capture_error)
+
+
+def framework_training_with_run_modules_fn(capture_error):
+    training_env = sagemaker_containers.training_env()
+
+    modules.run_module(training_env.module_dir, training_env.to_cmd_args(),
+                       training_env.to_env_vars(), training_env.module_name,
+                       capture_error=capture_error)
 
 
 def test_parameter_server():
@@ -237,15 +256,17 @@ def test_parameter_server():
 
     test.prepare(user_module=module, hyperparameters=hyperparameters, channels=[test.Channel.create(name='training')])
     training_env = sagemaker_containers.training_env()
-    process = modules.run_module(training_env.module_dir, training_env.to_cmd_args(), training_env.to_env_vars(),
-                                 training_env.module_name, cache=False, wait=False)
+    process = entry_point.run(training_env.module_dir, training_env.user_entry_point,
+                              training_env.to_cmd_args(), training_env.to_env_vars(), wait=False)
     # confirm the ps process is still hanging
     assert process.poll() is None
     process.kill()
 
 
-@pytest.mark.parametrize('user_script', [USER_MODE_SCRIPT])
-def test_script_mode(user_script):
+@pytest.mark.parametrize('user_script, training_fn, capture_error', [
+    [USER_MODE_SCRIPT, framework_training_with_script_mode_fn, True],
+    [USER_MODE_SCRIPT, framework_training_with_run_modules_fn, False]])
+def test_script_mode(user_script, training_fn, capture_error):
     channel = test.Channel.create(name='training')
 
     features = [1, 2, 3, 4]
@@ -259,7 +280,7 @@ def test_script_mode(user_script):
 
     test.prepare(user_module=module, hyperparameters=hyperparameters, channels=[channel])
 
-    assert execute_an_wrap_exit(framework_training_with_script_mode_fn) == trainer.SUCCESS_CODE
+    assert execute_an_wrap_exit(training_fn, capture_error=capture_error) == trainer.SUCCESS_CODE
 
     model_path = os.path.join(env.model_dir, 'saved_model')
 
@@ -271,8 +292,10 @@ def test_script_mode(user_script):
     assert model.optimizer == 'SGD'
 
 
-@pytest.mark.parametrize('user_script', [USER_MODE_SCRIPT])
-def test_script_mode_local_directory(user_script, tmpdir):
+@pytest.mark.parametrize('user_script, training_fn, capture_error', [
+    [USER_MODE_SCRIPT, framework_training_with_script_mode_fn, False],
+    [USER_MODE_SCRIPT, framework_training_with_run_modules_fn, True]])
+def test_script_mode_local_directory(user_script, training_fn, capture_error, tmpdir):
     channel = test.Channel.create(name='training')
 
     features = [1, 2, 3, 4]
@@ -290,7 +313,7 @@ def test_script_mode_local_directory(user_script, tmpdir):
 
     test.prepare(user_module=module, hyperparameters=hyperparameters, channels=[channel], local=True)
 
-    assert execute_an_wrap_exit(framework_training_with_script_mode_fn) == trainer.SUCCESS_CODE
+    assert execute_an_wrap_exit(training_fn, capture_error=capture_error) == trainer.SUCCESS_CODE
 
     model_path = os.path.join(env.model_dir, 'saved_model')
 
@@ -308,7 +331,10 @@ if __name__ == '__main__':
 """
 
 
-def test_script_mode_client_error():
+@pytest.mark.parametrize('training_fn, capture_error', [
+    (framework_training_with_script_mode_fn, True),
+    (framework_training_with_run_modules_fn, False)])
+def test_script_mode_client_error(training_fn, capture_error):
     channel = test.Channel.create(name='training')
 
     module = test.UserModule(test.File(name='user_script.py', data=USER_MODE_SCRIPT_WITH_ERROR))
@@ -318,29 +344,38 @@ def test_script_mode_client_error():
     test.prepare(user_module=module, hyperparameters=hyperparameters, channels=[channel])
 
     with pytest.raises(errors.ExecuteUserScriptError) as e:
-        framework_training_with_script_mode_fn()
+        training_fn(capture_error)
 
     message = str(e.value)
     assert 'ExecuteUserScriptError' in message
+    if capture_error:
+        assert 'ZeroDivisionError' in message
 
 
-def test_script_mode_client_import_error():
+@pytest.mark.parametrize('training_fn, capture_error', [
+    [framework_training_with_script_mode_fn, True],
+    [framework_training_with_run_modules_fn, False]])
+def test_script_mode_client_import_error(training_fn, capture_error):
     channel = test.Channel.create(name='training')
 
     requirements_file = test.File('requirements.txt', '42/0')
 
-    user_script = test.File(name='user_script.py', data='42/0')
-    module = test.UserModule(user_script).add_file(requirements_file).upload()
+    user_script = test.File(name='user_script', data='42/0')
+    module = test.UserModule(user_script).add_file(setup_file).add_file(requirements_file).upload()
 
-    hyperparameters = dict(sagemaker_program='user_script.py')
+    hyperparameters = dict(sagemaker_program='user_script')
 
     test.prepare(user_module=module, hyperparameters=hyperparameters, channels=[channel])
 
     with pytest.raises(errors.InstallModuleError) as e:
-        framework_training_with_script_mode_fn()
+        training_fn(capture_error)
 
     message = str(e.value)
     assert 'InstallModuleError:' in message
+
+    if capture_error:
+        assert "Invalid requirement: \'42/0\'" in message
+        assert "It looks like a path. File \'42/0\' does not exist." in message
 
 
 def failure_message():
@@ -348,9 +383,9 @@ def failure_message():
         return f.read()
 
 
-def execute_an_wrap_exit(fn):
+def execute_an_wrap_exit(fn, **kargs):
     try:
-        fn()
+        fn(**kargs)
         return trainer.SUCCESS_CODE
     except ValueError as e:
         return int(str(e))
