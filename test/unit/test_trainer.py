@@ -13,7 +13,7 @@
 import errno
 import os
 
-from mock import Mock, patch
+from mock import MagicMock, Mock, patch
 
 from sagemaker_containers import _errors, _trainer
 
@@ -22,9 +22,15 @@ class TrainingEnv(Mock):
     framework_module = 'my_framework:entry_point'
     log_level = 20
 
+    def sagemaker_s3_output(self):
+        return None
 
-class SriptTrainingEnv(TrainingEnv):
+
+class ScriptTrainingEnv(TrainingEnv):
     framework_module = None
+
+    def sagemaker_s3_output(self):
+        return 's3://bucket'
 
 
 @patch('importlib.import_module')
@@ -85,8 +91,9 @@ def test_train_with_client_error(_exit, import_module):
     _exit.assert_called_with(_trainer.DEFAULT_FAILURE_CODE)
 
 
+@patch('inotify_simple.INotify', MagicMock())
 @patch('sagemaker_containers.entry_point.run')
-@patch('sagemaker_containers.training_env', new_callable=SriptTrainingEnv)
+@patch('sagemaker_containers.training_env', new_callable=ScriptTrainingEnv)
 @patch('sagemaker_containers._trainer._exit_processes')
 def test_train_script(_exit, training_env, run):
     _trainer.train()

@@ -560,6 +560,7 @@ class TrainingEnv(_Env):
         self._resource_config = resource_config
         self._input_data_config = input_data_config
         self._output_data_dir = output_data_dir
+        self._output_intermediate_dir = output_intermediate_dir
         self._channel_input_dirs = {channel: channel_path(channel) for channel in input_data_config}
         self._current_host = current_host
 
@@ -600,8 +601,6 @@ class TrainingEnv(_Env):
         """
         return self._additional_framework_parameters
 
-
-    @property
     def sagemaker_s3_output(self):  # type: () -> str
         """s3 output directory location provided by the user.
 
@@ -609,7 +608,6 @@ class TrainingEnv(_Env):
             str: s3 location uri.
         """
         return self._sagemaker_s3_output
-
 
     def to_cmd_args(self):
         """Command line arguments representation of the training environment.
@@ -637,6 +635,7 @@ class TrainingEnv(_Env):
             'input_config_dir': self.input_config_dir, 'output_dir': self.output_dir, 'num_cpus': self.num_cpus,
             'num_gpus':         self.num_gpus, 'model_dir': self.model_dir, 'module_dir': self.module_dir,
             'training_env':     dict(self), 'user_args': self.to_cmd_args(),
+            'output_intermediate_dir': self.output_intermediate_dir
         }
 
         for name, path in self.channel_input_dirs.items():
@@ -779,6 +778,16 @@ class TrainingEnv(_Env):
             str: the path to output data directory, e.g. /opt/ml/output/data/algo-1.
         """
         return self._output_data_dir
+
+    @property
+    def output_intermediate_dir(self):  # type: () -> str
+        """The dir to write intermediate output artifacts for them to be synced to S3.
+        The directory special behavior is to move artifacts from the training instance to
+        s3 directory during training in case if sagemaker_s3_output was specified.
+        Returns:
+            str: the path to the intermediate output directory, e.g. /opt/ml/output/intermediate.
+        """
+        return self._output_intermediate_dir
 
     @property
     def framework_module(self):  # type: () -> str

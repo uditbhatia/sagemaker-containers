@@ -50,7 +50,7 @@ def train():
         # TrainingEnvironment has been initialized. It shouldn't be environment variable.
         region = os.environ.get('AWS_REGION', os.environ.get(_params.REGION_NAME_ENV))
         intemediate_sync = _intermediate_output.start_intermediate_folder_sync(
-            env.sagemaker_s3_output, region)
+            env.sagemaker_s3_output(), region)
 
         if env.framework_module:
             framework_name, entry_point_name = env.framework_module.split(':')
