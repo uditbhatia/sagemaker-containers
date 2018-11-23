@@ -23,6 +23,14 @@ class TrainingEnv(Mock):
     log_level = 20
 
     def sagemaker_s3_output(self):
+        return 's3://bucket'
+
+
+class TrainingEnvNoIntermediate(Mock):
+    framework_module = 'my_framework:entry_point'
+    log_level = 20
+
+    def sagemaker_s3_output(self):
         return None
 
 
@@ -33,6 +41,7 @@ class ScriptTrainingEnv(TrainingEnv):
         return 's3://bucket'
 
 
+@patch('inotify_simple.INotify', MagicMock())
 @patch('importlib.import_module')
 @patch('sagemaker_containers.training_env', TrainingEnv)
 def test_train(import_module):
@@ -44,6 +53,7 @@ def test_train(import_module):
     framework.entry_point.assert_called()
 
 
+@patch('inotify_simple.INotify', MagicMock())
 @patch('importlib.import_module')
 @patch('sagemaker_containers.training_env', TrainingEnv)
 @patch('sagemaker_containers._trainer._exit_processes')
@@ -59,6 +69,7 @@ def test_train_with_success(_exit, import_module):
     _exit.assert_called_with(_trainer.SUCCESS_CODE)
 
 
+@patch('inotify_simple.INotify', MagicMock())
 @patch('importlib.import_module')
 @patch('sagemaker_containers.training_env', TrainingEnv)
 @patch('sagemaker_containers._trainer._exit_processes')
@@ -75,6 +86,7 @@ def test_train_fails(_exit, import_module):
     _exit.assert_called_with(errno.ENOENT)
 
 
+@patch('inotify_simple.INotify', MagicMock())
 @patch('importlib.import_module')
 @patch('sagemaker_containers.training_env', TrainingEnv)
 @patch('sagemaker_containers._trainer._exit_processes')
@@ -103,3 +115,16 @@ def test_train_script(_exit, training_env, run):
                            env.to_env_vars())
 
     _exit.assert_called_with(_trainer.SUCCESS_CODE)
+
+
+@patch('importlib.import_module')
+@patch('sagemaker_containers._intermediate_output.start_intermediate_folder_sync')
+@patch('sagemaker_containers.training_env', TrainingEnvNoIntermediate)
+def test_train(start_intermediate_folder_sync, import_module):
+    framework = Mock()
+    import_module.return_value = framework
+    _trainer.train()
+
+    import_module.assert_called_with('my_framework')
+    framework.entry_point.assert_called()
+    start_intermediate_folder_sync.asser_not_called()
