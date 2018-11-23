@@ -12,22 +12,16 @@
 # language governing permissions and limitations under the License.
 from __future__ import absolute_import
 
-import contextlib
-import importlib
-import os
-import sys
-import tarfile
-import textwrap
-
+from mock import Mock, MagicMock, PropertyMock
 from mock import call, mock_open, patch
 import pytest
-from six import PY2
 
-from sagemaker_containers import _errors, _modules, _params, _intermediate_output
+from sagemaker_containers import _files, _intermediate_output
 
-builtins_open = '__builtin__.open' if PY2 else 'builtins.open'
+from inotify_simple import Event, flags
 
 REGION = 'us-west'
+S3_BUCKET = 's3://mybucket/'
 
 
 def test_accept_file_output_no_process():
@@ -42,27 +36,69 @@ def test_wrong_output():
     assert 'Expecting \'s3\' scheme' in str(e)
 
 
+@patch('inotify_simple.INotify', MagicMock())
 def test_daemon_process():
-    intemediate_sync = _intermediate_output.start_intermediate_folder_sync('s3://mybucket/', REGION)
+    intemediate_sync = _intermediate_output.start_intermediate_folder_sync(S3_BUCKET, REGION)
     assert intemediate_sync.daemon is True
 
 
-def test_files_are_preserved():
-    pass
+@patch('boto3.client', MagicMock())
+@patch('shutil.copy2')
+@patch('inotify_simple.INotify')
+@patch('boto3.s3.transfer.S3Transfer.upload_file')
+@patch('multiprocessing.Process')
+def test_non_write_ignored(process_mock, upload_file, inotify_mock, copy2):
+    process = process_mock.return_value
+    inotify = inotify_mock.return_value
+
+    inotify.add_watch.return_value = 'wd'
+    mask = flags.CREATE
+    for flag in flags:
+        if flag is not flags.CLOSE_WRITE and flag is not flags.ISDIR:
+            mask = mask | flag
+    inotify.read.return_value = [Event('wd', mask, 'cookie', 'file_name')]
+
+    def watch():
+        call = process_mock.call_args
+        args, kwargs = call
+        _intermediate_output._watch(kwargs['args'][0], kwargs['args'][1],
+                                    kwargs['args'][2], kwargs['args'][3])
+
+    process.start.side_effect = watch
+
+    _files.write_success_file()
+    _intermediate_output.start_intermediate_folder_sync(S3_BUCKET, REGION)
+
+    inotify.add_watch.assert_called()
+    inotify.read.assert_called()
+    copy2.assert_not_called()
+    upload_file.assert_not_called()
 
 
-def test_delete_files():
-    pass
+@patch('boto3.client', MagicMock())
+@patch('shutil.copy2')
+@patch('inotify_simple.INotify')
+@patch('boto3.s3.transfer.S3Transfer.upload_file')
+@patch('multiprocessing.Process')
+def test_modification_triggers_upload(process_mock, upload_file, inotify_mock, copy2):
+    process = process_mock.return_value
+    inotify = inotify_mock.return_value
 
+    inotify.add_watch.return_value = 'wd'
+    inotify.read.return_value = [Event('wd', flags.CLOSE_WRITE, 'cookie', 'file_name')]
 
-def test_s3_upload():
-    pass
+    def watch():
+        call = process_mock.call_args
+        args, kwargs = call
+        _intermediate_output._watch(kwargs['args'][0], kwargs['args'][1],
+                                    kwargs['args'][2], kwargs['args'][3])
 
+    process.start.side_effect = watch
 
-def test_multipart_upload():
-    pass
+    _files.write_success_file()
+    _intermediate_output.start_intermediate_folder_sync(S3_BUCKET, REGION)
 
-
-def test_every_modification_triggers_upload():
-    pass
-
+    inotify.add_watch.assert_called()
+    inotify.read.assert_called()
+    copy2.assert_called()
+    upload_file.assert_called()

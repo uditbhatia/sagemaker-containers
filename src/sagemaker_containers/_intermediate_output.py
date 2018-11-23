@@ -12,16 +12,16 @@
 # language governing permissions and limitations under the License.
 from __future__ import absolute_import
 
-from concurrent.futures import ThreadPoolExecutor
-from inotify_simple import INotify, flags
-from multiprocessing import Process
+import concurrent.futures as futures
+import inotify_simple
+import multiprocessing
 import os
 import shutil
 from six.moves.urllib.parse import urlparse
 import time
 
 import boto3
-from boto3.s3.transfer import S3Transfer
+import boto3.s3.transfer as s3transfer
 from sagemaker_containers import _env, _logging
 
 logger = _logging.get_logger()
@@ -70,9 +70,18 @@ def _copy_file(executor, s3_uploader, relative_path, filename):
 
 
 def _watch(inotify, watchers, watch_flags, s3_uploader):
+    """As soon as a user is done with a file under `/opt/ml/output/intermediate`
+    we would get notified by using inotify. We would copy this file under
+    `/opt/ml/output/intermediate/.tmp.sagemaker_s3_sync` folder preserving
+    the same folder structure to prevent it from being further modified.
+    As we copy the file we would add timestamp with microseconds precision
+    to avoid modification during s3 upload.
+    After that we copy the file to s3 in a separate Thread.
+    We keep the queue of the files we need to move as FIFO.
+    """
     # initialize a thread pool with 1 worker
     # to be used for uploading files to s3 in a separate thread
-    executor = ThreadPoolExecutor(max_workers=1)
+    executor = futures.ThreadPoolExecutor(max_workers=1)
 
     last_pass_done = False
     stop_file_exists = False
@@ -81,14 +90,14 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
     while not last_pass_done:
         # wait for any events in the directory for 1 sec and then re-check exit conditions
         for event in inotify.read(timeout=1000):
-            for flag in flags.from_mask(event.mask):
+            for flag in inotify_simple.flags.from_mask(event.mask):
                 # if new directory was created traverse the directory tree to recursively add all
                 # created folders to the watchers list.
                 # Upload files to s3 if there any files.
                 # There is a potential race condition if upload the file and the see a notification
                 # for it which should cause any problems because when we copy files to temp dir
                 # we add a unique timestamp up to microseconds.
-                if flag is flags.ISDIR:
+                if flag is inotify_simple.flags.ISDIR:
                     for folder, dirs, files in os.walk(os.path.join(intermediate_path, event.name)):
                         wd = inotify.add_watch(folder, watch_flags)
                         relative_path = os.path.relpath(folder, intermediate_path)
@@ -96,7 +105,7 @@ def _watch(inotify, watchers, watch_flags, s3_uploader):
                         os.makedirs(os.path.join(tmp_dir_path, relative_path))
                         for file in files:
                             _copy_file(executor, s3_uploader, relative_path, file)
-                elif flag is flags.CLOSE_WRITE:
+                elif flag is inotify_simple.flags.CLOSE_WRITE:
                     _copy_file(executor, s3_uploader, watchers[event.wd], event.name)
 
         last_pass_done = stop_file_exists
@@ -120,7 +129,7 @@ def start_intermediate_folder_sync(s3_output_location, region):
         region (str): the location of the module.
 
     Returns:
-        (Process): the intermediate output sync daemonic process.
+        (multiprocessing.Process): the intermediate output sync daemonic process.
     """
     if not s3_output_location or os.path.exists(intermediate_path):
         logger.debug('Could not initialize intermediate folder sync to s3.')
@@ -141,7 +150,7 @@ def start_intermediate_folder_sync(s3_output_location, region):
 
     # create s3 transfer client
     client = boto3.client('s3', region)
-    s3_transfer = S3Transfer(client)
+    s3_transfer = s3transfer.S3Transfer(client)
     s3_uploader = {
         'transfer': s3_transfer,
         'bucket': url.netloc,
@@ -150,14 +159,14 @@ def start_intermediate_folder_sync(s3_output_location, region):
     }
 
     # Add intermediate folder to the watch list
-    inotify = INotify()
-    watch_flags = flags.CLOSE_WRITE | flags.CREATE
+    inotify = inotify_simple.INotify()
+    watch_flags = inotify_simple.flags.CLOSE_WRITE | inotify_simple.flags.CREATE
     watchers = {}
     wd = inotify.add_watch(intermediate_path, watch_flags)
     watchers[wd] = ''
 
     # start subprocess to sync any files from intermediate folder to s3
-    p = Process(target=_watch, args=[inotify, watchers, watch_flags, s3_uploader])
+    p = multiprocessing.Process(target=_watch, args=[inotify, watchers, watch_flags, s3_uploader])
     # Make the process daemonic as a safety switch to prevent training job from hanging forever
     # in case if something goes wrong and main container process exits in an unexpected way
     p.daemon = True
