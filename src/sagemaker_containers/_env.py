@@ -602,10 +602,10 @@ class TrainingEnv(_Env):
         return self._additional_framework_parameters
 
     def sagemaker_s3_output(self):  # type: () -> str
-        """s3 output directory location provided by the user.
+        """S3 output directory location provided by the user.
 
         Returns:
-            str: s3 location uri.
+            str: S3 location.
         """
         return self._sagemaker_s3_output
 
@@ -781,9 +781,9 @@ class TrainingEnv(_Env):
 
     @property
     def output_intermediate_dir(self):  # type: () -> str
-        """The dir to write intermediate output artifacts for them to be synced to S3.
-        The directory special behavior is to move artifacts from the training instance to
-        s3 directory during training in case if sagemaker_s3_output was specified.
+        """The directory for intermediate outputs artifacts that should be synced to S3.
+        Any files written to this directory will be uploaded to S3 by a background process
+        while training is in progress, but only if sagemaker_s3_output was specified.
         Returns:
             str: the path to the intermediate output directory, e.g. /opt/ml/output/intermediate.
         """
