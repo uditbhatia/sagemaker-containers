@@ -135,7 +135,7 @@ def start_intermediate_folder_sync(s3_output_location, region):
     """
     if not s3_output_location or os.path.exists(intermediate_path):
         logger.debug('Could not initialize intermediate folder sync to s3.')
-        return None
+        return
 
     # create intermediate and intermediate_tmp directories
     os.makedirs(intermediate_path)
