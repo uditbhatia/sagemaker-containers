@@ -12,13 +12,13 @@
 # language governing permissions and limitations under the License.
 from __future__ import absolute_import
 
-from mock import Mock, MagicMock, PropertyMock, call, mock_open, patch
 import os
+
+from inotify_simple import Event, flags
+from mock import MagicMock, patch
 import pytest
 
 from sagemaker_containers import _env, _files, _intermediate_output
-
-from inotify_simple import Event, flags
 
 REGION = 'us-west'
 S3_BUCKET = 's3://mybucket/'

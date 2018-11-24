@@ -13,15 +13,16 @@
 from __future__ import absolute_import
 
 import concurrent.futures as futures
-import inotify_simple
 import multiprocessing
 import os
 import shutil
-from six.moves.urllib.parse import urlparse
 import time
 
 import boto3
 import boto3.s3.transfer as s3transfer
+import inotify_simple
+from six.moves.urllib.parse import urlparse
+
 from sagemaker_containers import _env, _logging
 
 logger = _logging.get_logger()

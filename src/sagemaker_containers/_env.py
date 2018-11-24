@@ -132,8 +132,8 @@ output_data_dir = os.path.join(output_dir, 'data')  # type: str
 output_intermediate_dir = os.path.join(output_dir, 'intermediate')  # type: str
 """str: the path to the intermediate output directory, e.g. /opt/ml/output/intermediate.
 
-The directory special behavior is to move artifacts from the training instance to 
-s3 directory during training. 
+The directory special behavior is to move artifacts from the training instance to
+s3 directory during training.
 Returns:
     str: the path to the intermediate output directory, e.g. /opt/ml/output/intermediate.
 """
