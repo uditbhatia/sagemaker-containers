@@ -83,7 +83,7 @@ def mock_training_env(current_host='algo-1', hosts=[], hyperparameters=None,
     hyperparameters = hyperparameters or {}
 
     return MagicMock(current_host=current_host, hosts=hosts, hyperparameters=hyperparameters,
-                     module_dir=module_dir, module_name=module_name, **kwargs, network_interface_name="ethwe")
+                     module_dir=module_dir, module_name=module_name, network_interface_name="ethwe", **kwargs)
 
 
 # MPI Master Tests
