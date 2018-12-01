@@ -218,16 +218,14 @@ def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environm
     mock_num_of_processes_per_host = MagicMock()
     mock_custom_mpi_options = MagicMock()
     mock_env = mock_training_env()
-
+    mock_env.additional_framework_parameters.get.side_effect = [mock_num_of_processes_per_host, mock_custom_mpi_options]
     mock_master_instance = mock_master.return_value
     mock_master_instance.is_master.side_effect = [True]
 
     mock_env_generator.return_value = mock_env
 
     mpi_run(train_script=mock_train_script,
-            code_dir=mock_code_dir,
-            num_of_processes_per_host=mock_num_of_processes_per_host,
-            custom_mpi_options=mock_custom_mpi_options)
+            code_dir=mock_code_dir)
 
     assert _setup_mpi_environment.call_count == 1
     _create_mpi_script.assert_called_with(mock_env.hyperparameters, mock_env.channel_input_dirs,
@@ -249,6 +247,7 @@ def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup
     mock_num_of_processes_per_host = MagicMock()
     mock_custom_mpi_options = MagicMock()
     mock_env = mock_training_env()
+    mock_env.additional_framework_parameters.get.side_effect = [mock_num_of_processes_per_host, mock_custom_mpi_options]
 
     mock_master_instance = mock_master.return_value
     mock_master_instance.is_master.side_effect = [False]
@@ -258,9 +257,7 @@ def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup
     mock_env_generator.return_value = mock_env
 
     mpi_run(train_script=mock_train_script,
-            code_dir=mock_code_dir,
-            num_of_processes_per_host=mock_num_of_processes_per_host,
-            custom_mpi_options=mock_custom_mpi_options)
+            code_dir=mock_code_dir)
 
     assert _setup_mpi_environment.call_count == 1
     _create_mpi_script.assert_called_with(mock_env.hyperparameters, mock_env.channel_input_dirs,
