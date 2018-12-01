@@ -17,9 +17,10 @@ import os
 import sys
 
 from sagemaker_containers import _env, _errors, _files, _logging, _modules, _process
+from sagemaker_containers._mpi import mpi_run
 
 
-def run(uri, user_entry_point, args, env_vars=None, wait=True, capture_error=False):
+def run(uri, user_entry_point, args, env_vars=None, wait=True, capture_error=False, mpi_enabled=False):
     # type: (str, str, list, dict, bool, bool) -> subprocess.Popen
     """Download, prepare and executes a compressed tar file from S3 or provided directory as an user
     entrypoint. Runs the user entry point, passing env_vars as environment variables and args as command
@@ -72,7 +73,10 @@ def run(uri, user_entry_point, args, env_vars=None, wait=True, capture_error=Fal
 
     _env.write_env_vars(env_vars)
 
-    return _call(user_entry_point, args, env_vars, wait, capture_error)
+    if mpi_enabled:
+        return mpi_run(train_script=user_entry_point, code_dir=_env.code_dir)
+    else:
+        return _call(user_entry_point, args, env_vars, wait, capture_error)
 
 
 def install(name, dst, capture_error=False):
