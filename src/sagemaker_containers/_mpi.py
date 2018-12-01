@@ -1,20 +1,17 @@
 import argparse
-
-import stat
+import os
 import shlex
 import socket
+import stat
+import subprocess
 import sys
 import textwrap
-import os
-import subprocess
 import time
 
-from argparse import ArgumentParser
 from retrying import retry
 
 import sagemaker_containers
 from sagemaker_containers import _logging
-from sagemaker_containers._env import TrainingEnv
 from sagemaker_containers._mapping import to_cmd_args
 from sagemaker_containers._timeout import timeout
 

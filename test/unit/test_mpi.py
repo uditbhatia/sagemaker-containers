@@ -1,11 +1,11 @@
 import socket
 import sys
 
-from mock import patch, MagicMock, mock_open, call, PropertyMock, mock
+from mock import call, MagicMock, mock, patch
 
 from sagemaker_containers import _mpi
-from sagemaker_containers._mpi import _change_hostname, _start_ssh_daemon, _setup_mpi_environment, MPIMaster, MPIWorker, \
-    mpi_run, _create_mpi_script
+from sagemaker_containers._mpi import _change_hostname, _create_mpi_script, _setup_mpi_environment, _start_ssh_daemon, \
+    mpi_run, MPIMaster, MPIWorker
 
 _TEST_MPI_SCRIPT_PATH = "/tmp/mpi_script_path"
 
@@ -86,7 +86,7 @@ def mock_training_env(current_host='algo-1', hosts=[], hyperparameters=None,
                      module_dir=module_dir, module_name=module_name, **kwargs, network_interface_name="ethwe")
 
 
-### MPI Master Tests
+# MPI Master Tests
 
 @patch('sagemaker_containers._mpi._can_connect', side_effect=[False, False, True])
 @patch('time.sleep')
@@ -163,7 +163,7 @@ def test_is_master():
 
 @patch('sagemaker_containers._mpi.MPIMaster._wait_for_worker_nodes_to_start_sshd')
 @patch('sagemaker_containers._mpi.MPIMaster._run_mpi_on_all_nodes')
-def test_mpi_master_run(_run_mpi_on_all_nodes, _wait_for_worker_nodes_to_start_sshd):
+def test_mpi_master_call(_run_mpi_on_all_nodes, _wait_for_worker_nodes_to_start_sshd):
     mock_env = mock_training_env()
     mpi_master = MPIMaster(env=mock_env,
                            process_per_host=1,
@@ -174,7 +174,7 @@ def test_mpi_master_run(_run_mpi_on_all_nodes, _wait_for_worker_nodes_to_start_s
     assert _wait_for_worker_nodes_to_start_sshd.call_count == 1
 
 
-### MPI Worker Tests
+# MPI Worker Tests
 
 def test_mpi_worker_init():
     current_host = "algo-1"
@@ -206,16 +206,6 @@ def test_wait_until_mpi_stops_running():
             [call(_mpi._MPI_IS_FINISHED), call(_mpi._MPI_IS_FINISHED),
              call(_mpi._MPI_IS_FINISHED)])
         assert mock_isfile.call_count == 3
-
-
-@patch('sagemaker_containers._mpi.MPIWorker._wait_for_mpi_to_start_running')
-@patch('sagemaker_containers._mpi.MPIWorker._wait_until_mpi_stops_running')
-def test_mpi_master_run(_wait_until_mpi_stops_running, _wait_for_mpi_to_start_running):
-    mpi_worker = MPIWorker(current_host="algo-1")
-    mpi_worker()
-
-    assert _wait_for_mpi_to_start_running.call_count == 1
-    assert _wait_until_mpi_stops_running.call_count == 1
 
 
 @patch('sagemaker_containers.training_env')
