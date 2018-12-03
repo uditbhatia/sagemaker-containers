@@ -242,7 +242,7 @@ class MPIMaster(object):
                 capture_error (bool): Default false. If True, the running process captures the
                     stderr, and appends it to the returned Exception message in case of errors.
         """
-        self._wait_for_worker_nodes_to_start_sshd(self.env.hosts.copy())
+        self._wait_for_worker_nodes_to_start_sshd(self.env.hosts[:])
         self._run_mpi_on_all_nodes(wait, capture_error)
 
 

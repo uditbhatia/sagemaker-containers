@@ -13,13 +13,15 @@
 import socket
 import sys
 
-from mock import call, MagicMock, mock, patch
+from mock import call, MagicMock, mock, patch, mock_open
 import pytest
+from six import PY2
 
 from sagemaker_containers import _errors, _mpi
 from sagemaker_containers._mpi import _change_hostname, _create_mpi_script, _setup_mpi_environment, _start_ssh_daemon, \
     mpi_run, MPIMaster, MPIWorker
 
+builtins_open = '__builtin__.open' if PY2 else 'builtins.open'
 _TEST_MPI_SCRIPT_PATH = "/tmp/mpi_script_path"
 
 
@@ -127,6 +129,7 @@ def test_parse_custom_mpi_options():
     assert unknown_args == ["--Dummy", "dummyvalue"]
 
 
+@patch(builtins_open, mock_open())
 @patch('sagemaker_containers._mpi.MPIMaster._build_mpi_command')
 @patch('sagemaker_containers._process.check_error')
 @patch('sagemaker_containers._process.create')
@@ -142,24 +145,24 @@ def test_run_mpi_on_all_nodes(_log_script_invocation, _process_create, _process_
     _build_mpi_command.return_value = cmd
 
     my_mock = mock.MagicMock()
-    with mock.patch('builtins.open', my_mock):
-        manager = my_mock.return_value.__enter__.return_value
-        manager.read.return_value = 'some data'
+    manager = my_mock.return_value.__enter__.return_value
+    manager.read.return_value = 'some data'
 
-        mock_env = mock_training_env()
-        mpi_master = MPIMaster(env=mock_env,
-                               process_per_host=1,
-                               mpi_script_path=_TEST_MPI_SCRIPT_PATH,
-                               custom_mpi_options="")
-        mpi_master._run_mpi_on_all_nodes(wait, capture_error)
+    mock_env = mock_training_env()
+    mpi_master = MPIMaster(env=mock_env,
+                           process_per_host=1,
+                           mpi_script_path=_TEST_MPI_SCRIPT_PATH,
+                           custom_mpi_options="")
+    mpi_master._run_mpi_on_all_nodes(wait, capture_error)
 
-        _build_mpi_command.assert_called()
-        _log_script_invocation.assert_called()
-        if wait:
-            _process_check_error.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError,
-                                                    capture_error=capture_error)
-        else:
-            _process_create.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError, capture_error=capture_error)
+    _build_mpi_command.assert_called()
+    _log_script_invocation.assert_called()
+    open.assert_any_call(_TEST_MPI_SCRIPT_PATH)
+    if wait:
+        _process_check_error.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError,
+                                                capture_error=capture_error)
+    else:
+        _process_create.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError, capture_error=capture_error)
 
 
 def test_build_mpi_command():
