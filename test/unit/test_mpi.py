@@ -1,10 +1,22 @@
-import pytest
+# Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the 'License'). You
+# may not use this file except in compliance with the License. A copy of
+# the License is located at
+#
+#     http://aws.amazon.com/apache2.0/
+#
+# or in the 'license' file accompanying this file. This file is
+# distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
+# ANY KIND, either express or implied. See the License for the specific
+# language governing permissions and limitations under the License.
 import socket
 import sys
 
 from mock import call, MagicMock, mock, patch
+import pytest
 
-from sagemaker_containers import _mpi
+from sagemaker_containers import _errors, _mpi
 from sagemaker_containers._mpi import _change_hostname, _create_mpi_script, _setup_mpi_environment, _start_ssh_daemon, \
     mpi_run, MPIMaster, MPIWorker
 
@@ -40,7 +52,7 @@ def test_setup_mpi_environment(start_ssh_daemon, change_hostname):
     """Unit tests the ``_setup_mpi_environment`` method to verify all steps are performed for mpi setup"""
 
     mock_env = mock_training_env()
-    _setup_mpi_environment(env=mock_env)
+    _setup_mpi_environment(mock_env.current_host)
     change_hostname.assert_called_with(current_host=mock_env.current_host)
     start_ssh_daemon.assert_called()
 
@@ -68,8 +80,7 @@ def test_create_mpi_script():
     """
 
     mpi_script_path = "/tmp/mpi_script.sh"
-    _create_mpi_script(hyperparameters={"hp1": "hpival"},
-                       channel_input_dirs={"channel1": "channel1_val"},
+    _create_mpi_script(args=["--sample", "arg1", "--sample2", "1"],
                        train_script="train.py",
                        code_dir="/opt/ml/code",
                        mpi_script_path=mpi_script_path,
@@ -80,7 +91,7 @@ def test_create_mpi_script():
         content = mpi_script_file.read()
         assert """#!/usr/bin/env bash
 touch /tmp/mpi_is_running
-%s /opt/ml/code/train.py --hp1 hpival --channel1 channel1_val
+%s /opt/ml/code/train.py --sample arg1 --sample2 1
 EXIT_CODE=$?
 touch /tmp/mpi_is_finished
 exit ${EXIT_CODE}
@@ -108,7 +119,8 @@ def mock_training_env(current_host='algo-1', hosts=[], hyperparameters=None,
 def test_wait_for_worker_nodes_to_start_sshd(socket, sleep, _can_connect):
     mpi_master = MPIMaster(env=mock_training_env(),
                            process_per_host=1,
-                           mpi_script_path=_TEST_MPI_SCRIPT_PATH)
+                           mpi_script_path=_TEST_MPI_SCRIPT_PATH,
+                           custom_mpi_options="")
     mpi_master._wait_for_worker_nodes_to_start_sshd(hosts=['algo-2'])
 
     assert _can_connect.call_count == 3
@@ -133,9 +145,16 @@ def test_parse_custom_mpi_options():
 @pytest.mark.skipif(sys.version_info.major != 3,
                     reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('sagemaker_containers._mpi.MPIMaster._build_mpi_command')
-@patch('subprocess.check_call')
+@patch('sagemaker_containers._process.check_error')
+@patch('sagemaker_containers._process.create')
 @patch('sagemaker_containers._logging.log_script_invocation')
-def test_run_mpi_on_all_nodes(_log_script_invocation, _subprocess_check_call, _build_mpi_command):
+@pytest.mark.parametrize('wait, capture_error',
+                         [(True, False),
+                          (True, True),
+                          (False, False),
+                          (False, True)])
+def test_run_mpi_on_all_nodes(_log_script_invocation, _process_create, _process_check_error, _build_mpi_command, wait,
+                              capture_error):
     cmd = "mpirun -np 2"
     _build_mpi_command.return_value = cmd
 
@@ -147,12 +166,17 @@ def test_run_mpi_on_all_nodes(_log_script_invocation, _subprocess_check_call, _b
         mock_env = mock_training_env()
         mpi_master = MPIMaster(env=mock_env,
                                process_per_host=1,
-                               mpi_script_path=_TEST_MPI_SCRIPT_PATH)
-        mpi_master._run_mpi_on_all_nodes()
+                               mpi_script_path=_TEST_MPI_SCRIPT_PATH,
+                               custom_mpi_options="")
+        mpi_master._run_mpi_on_all_nodes(wait, capture_error)
 
         _build_mpi_command.assert_called()
         _log_script_invocation.assert_called()
-        _subprocess_check_call.assert_called_with(cmd.split())
+        if wait:
+            _process_check_error.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError,
+                                                    capture_error=capture_error)
+        else:
+            _process_create.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError, capture_error=capture_error)
 
 
 @pytest.mark.skipif(sys.version_info.major != 3,
@@ -167,7 +191,7 @@ def test_build_mpi_command():
     assert mpi_command == "mpirun --host algo-1 -np 1  --allow-run-as-root --display-map --tag-output " \
                           "-mca btl_tcp_if_include ethwe -mca oob_tcp_if_include ethwe " \
                           "-x NCCL_SOCKET_IFNAME=ethwe --mca plm_rsh_no_tree_spawn 1 " \
-                          "-mca orte_abort_on_non_zero_status 1 -x NCCL_MIN_NRINGS=8 " \
+                          "-mca orte_abort_on_non_zero_status 1 " \
                           "-x NCCL_DEBUG=WARN -x LD_LIBRARY_PATH -x PATH -x LD_PRELOAD=/libchangehostname.so " \
                           "--Dummy dummyvalue %s" % _TEST_MPI_SCRIPT_PATH
 
@@ -177,7 +201,8 @@ def test_build_mpi_command():
 def test_is_master():
     mpi_master = MPIMaster(env=mock_training_env(),
                            process_per_host=1,
-                           mpi_script_path=_TEST_MPI_SCRIPT_PATH)
+                           mpi_script_path=_TEST_MPI_SCRIPT_PATH,
+                           custom_mpi_options="")
 
     assert mpi_master.is_master(["algo-1", "algo-2"], "algo-1")
     assert not mpi_master.is_master(["algo-1", "algo-2"], "algo-2")
@@ -187,14 +212,20 @@ def test_is_master():
                     reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('sagemaker_containers._mpi.MPIMaster._wait_for_worker_nodes_to_start_sshd')
 @patch('sagemaker_containers._mpi.MPIMaster._run_mpi_on_all_nodes')
-def test_mpi_master_call(_run_mpi_on_all_nodes, _wait_for_worker_nodes_to_start_sshd):
+@pytest.mark.parametrize('wait, capture_error',
+                         [(True, False),
+                          (True, True),
+                          (False, False),
+                          (False, True)])
+def test_mpi_master_call(_run_mpi_on_all_nodes, _wait_for_worker_nodes_to_start_sshd, wait, capture_error):
     mock_env = mock_training_env()
     mpi_master = MPIMaster(env=mock_env,
                            process_per_host=1,
-                           mpi_script_path=_TEST_MPI_SCRIPT_PATH)
-    mpi_master()
+                           mpi_script_path=_TEST_MPI_SCRIPT_PATH,
+                           custom_mpi_options="")
+    mpi_master.run(wait, capture_error)
 
-    assert _run_mpi_on_all_nodes.call_count == 1
+    _run_mpi_on_all_nodes.assert_called_with(wait, capture_error)
     assert _wait_for_worker_nodes_to_start_sshd.call_count == 1
 
 
@@ -243,9 +274,13 @@ def test_wait_until_mpi_stops_running():
 @patch('sagemaker_containers._mpi._setup_mpi_environment')
 @patch('sagemaker_containers._mpi._create_mpi_script', autospec=True)
 @patch('sagemaker_containers._mpi.MPIMaster')
-def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environment, mock_env_generator):
-    mock_train_script = MagicMock()
-    mock_code_dir = MagicMock()
+@pytest.mark.parametrize('train_script, code_dir, args, env_vars, wait, capture_error',
+                         [("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, True, False),
+                          ("train1.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, True, True),
+                          ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, False),
+                          ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, True)])
+def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environment, mock_env_generator, train_script,
+                            code_dir, args, env_vars, wait, capture_error):
     mock_num_of_processes_per_host = MagicMock()
     mock_custom_mpi_options = MagicMock()
     mock_env = mock_training_env()
@@ -255,16 +290,14 @@ def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environm
 
     mock_env_generator.return_value = mock_env
 
-    mpi_run(train_script=mock_train_script,
-            code_dir=mock_code_dir)
+    mpi_run(train_script, code_dir, args, env_vars, wait, capture_error)
 
     assert _setup_mpi_environment.call_count == 1
-    _create_mpi_script.assert_called_with(mock_env.hyperparameters, mock_env.channel_input_dirs,
-                                          mock_train_script, mock_code_dir, _mpi._MPI_SCRIPT,
+    _create_mpi_script.assert_called_with(args, train_script, code_dir, _mpi._MPI_SCRIPT,
                                           _mpi._MPI_IS_RUNNING, _mpi._MPI_IS_FINISHED)
 
     mock_master.assert_called_with(mock_env, mock_num_of_processes_per_host, _mpi._MPI_SCRIPT, mock_custom_mpi_options)
-    mock_master_instance.assert_called()
+    mock_master_instance.run.assert_called_with(wait, capture_error)
 
 
 @pytest.mark.skipif(sys.version_info.major != 3,
@@ -274,9 +307,13 @@ def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environm
 @patch('sagemaker_containers._mpi._create_mpi_script')
 @patch('sagemaker_containers._mpi.MPIMaster', autospec=True)
 @patch('sagemaker_containers._mpi.MPIWorker', autospec=True)
-def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup_mpi_environment, mock_env_generator):
-    mock_train_script = MagicMock()
-    mock_code_dir = MagicMock()
+@pytest.mark.parametrize('train_script, code_dir, args, env_vars, wait, capture_error',
+                         [("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, True, False),
+                          ("train1.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, True, True),
+                          ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, False),
+                          ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, True)])
+def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup_mpi_environment, mock_env_generator,
+                            train_script, code_dir, args, env_vars, wait, capture_error):
     mock_num_of_processes_per_host = MagicMock()
     mock_custom_mpi_options = MagicMock()
     mock_env = mock_training_env()
@@ -289,16 +326,14 @@ def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup
 
     mock_env_generator.return_value = mock_env
 
-    mpi_run(train_script=mock_train_script,
-            code_dir=mock_code_dir)
+    mpi_run(train_script, code_dir, args, env_vars, wait, capture_error)
 
     assert _setup_mpi_environment.call_count == 1
-    _create_mpi_script.assert_called_with(mock_env.hyperparameters, mock_env.channel_input_dirs,
-                                          mock_train_script, mock_code_dir, _mpi._MPI_SCRIPT,
+    _create_mpi_script.assert_called_with(args, train_script, code_dir, _mpi._MPI_SCRIPT,
                                           _mpi._MPI_IS_RUNNING, _mpi._MPI_IS_FINISHED)
 
     mock_master.assert_called_with(mock_env, mock_num_of_processes_per_host, _mpi._MPI_SCRIPT, mock_custom_mpi_options)
-    mock_master_instance.assert_not_called()
+    mock_master_instance.run.assert_not_called()
 
     mock_worker.assert_called_with(mock_env)
-    mock_worker_instance.assert_called()
+    mock_worker_instance.run.assert_called()
