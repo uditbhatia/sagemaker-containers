@@ -74,7 +74,6 @@ def run(uri, user_entry_point, args, env_vars=None, wait=True, capture_error=Fal
     _env.write_env_vars(env_vars)
 
     if mpi_enabled:
-        print("Env Vars: {} Args: {} uri: {}".format(env_vars, args, uri))
         return mpi_run(user_entry_point, _env.code_dir, args, env_vars, wait, capture_error)
     else:
         return _call(user_entry_point, args, env_vars, wait, capture_error)
@@ -118,11 +117,9 @@ def _call(user_entry_point, args=None, env_vars=None, wait=True, capture_error=F
     _logging.log_script_invocation(cmd, env_vars)
 
     if wait:
-        print("Inside wait check_error, capture_error: "+str(capture_error))
         return _process.check_error(cmd, _errors.ExecuteUserScriptError, capture_error=capture_error)
 
     else:
-        print("Inside not-wait create, capture_error: "+str(capture_error))
         return _process.create(cmd, _errors.ExecuteUserScriptError, capture_error=capture_error)
 
 

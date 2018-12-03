@@ -23,8 +23,6 @@ from sagemaker_containers._mpi import _change_hostname, _create_mpi_script, _set
 _TEST_MPI_SCRIPT_PATH = "/tmp/mpi_script_path"
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('os.system')
 def test_change_hostname(os_system):
     """Unit tests the ``_change_hostname`` method executes the change-hostname.sh script with valid host or not."""
@@ -34,8 +32,6 @@ def test_change_hostname(os_system):
     os_system.assert_called_with("/change-hostname.sh {}".format(host))
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch("subprocess.Popen")
 def test_start_ssh_daemon(subprocess_popen):
     """Unit tests the ``_start_ssh_daemon`` method to verify it is executing the ssh deamon or not"""
@@ -44,8 +40,6 @@ def test_start_ssh_daemon(subprocess_popen):
     subprocess_popen.assert_called_with(["/usr/sbin/sshd", "-D"])
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('sagemaker_containers._mpi._change_hostname')
 @patch('sagemaker_containers._mpi._start_ssh_daemon')
 def test_setup_mpi_environment(start_ssh_daemon, change_hostname):
@@ -57,8 +51,6 @@ def test_setup_mpi_environment(start_ssh_daemon, change_hostname):
     start_ssh_daemon.assert_called()
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def test_can_connect():
     mock_socket = MagicMock(spec=['connect', 'close'])
     mock_socket.connect.side_effect = [socket.error('expected'), socket.error('expected'), None]
@@ -73,8 +65,6 @@ def test_can_connect():
     assert mock_socket.connect.call_count == 3
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def test_create_mpi_script():
     """Unit test for ``_create_mpi_script``, to verify the script is generated in the valid format.
     """
@@ -98,8 +88,6 @@ exit ${EXIT_CODE}
 """ % (sys.executable) == content
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def mock_training_env(current_host='algo-1', hosts=[], hyperparameters=None,
                       module_dir='s3://my/script', module_name='imagenet', **kwargs):
     hosts = hosts or ['algo-1']
@@ -111,8 +99,7 @@ def mock_training_env(current_host='algo-1', hosts=[], hyperparameters=None,
 
 
 # MPI Master Tests
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
+
 @patch('sagemaker_containers._mpi._can_connect', side_effect=[False, False, True])
 @patch('time.sleep')
 @patch('socket.socket')
@@ -128,8 +115,6 @@ def test_wait_for_worker_nodes_to_start_sshd(socket, sleep, _can_connect):
     sleep.assert_called()
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def test_parse_custom_mpi_options():
     mpi_master = MPIMaster(env=mock_training_env(),
                            process_per_host=1,
@@ -142,8 +127,6 @@ def test_parse_custom_mpi_options():
     assert unknown_args == ["--Dummy", "dummyvalue"]
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('sagemaker_containers._mpi.MPIMaster._build_mpi_command')
 @patch('sagemaker_containers._process.check_error')
 @patch('sagemaker_containers._process.create')
@@ -179,8 +162,6 @@ def test_run_mpi_on_all_nodes(_log_script_invocation, _process_create, _process_
             _process_create.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError, capture_error=capture_error)
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def test_build_mpi_command():
     mpi_master = MPIMaster(env=mock_training_env(),
                            process_per_host=1,
@@ -196,8 +177,6 @@ def test_build_mpi_command():
                           "--Dummy dummyvalue %s" % _TEST_MPI_SCRIPT_PATH
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def test_is_master():
     mpi_master = MPIMaster(env=mock_training_env(),
                            process_per_host=1,
@@ -208,8 +187,6 @@ def test_is_master():
     assert not mpi_master.is_master(["algo-1", "algo-2"], "algo-2")
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('sagemaker_containers._mpi.MPIMaster._wait_for_worker_nodes_to_start_sshd')
 @patch('sagemaker_containers._mpi.MPIMaster._run_mpi_on_all_nodes')
 @pytest.mark.parametrize('wait, capture_error',
@@ -230,16 +207,13 @@ def test_mpi_master_call(_run_mpi_on_all_nodes, _wait_for_worker_nodes_to_start_
 
 
 # MPI Worker Tests
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
+
 def test_mpi_worker_init():
     current_host = "algo-1"
     mpi_worker = MPIWorker(current_host=current_host)
     assert mpi_worker._current_host == current_host
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def test_wait_for_mpi_to_start_running():
     with patch('os.path.isfile') as mock_isfile, patch('time.sleep'):
         mock_isfile.side_effect = [False, False, True]
@@ -253,8 +227,6 @@ def test_wait_for_mpi_to_start_running():
         assert len(mock_isfile.call_args_list) == 3
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 def test_wait_until_mpi_stops_running():
     with patch('os.path.isfile') as mock_isfile, patch('time.sleep'):
         mock_isfile.side_effect = [False, False, True]
@@ -268,8 +240,6 @@ def test_wait_until_mpi_stops_running():
         assert mock_isfile.call_count == 3
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('sagemaker_containers.training_env')
 @patch('sagemaker_containers._mpi._setup_mpi_environment')
 @patch('sagemaker_containers._mpi._create_mpi_script', autospec=True)
@@ -300,8 +270,6 @@ def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environm
     mock_master_instance.run.assert_called_with(wait, capture_error)
 
 
-@pytest.mark.skipif(sys.version_info.major != 3,
-                    reason="Skip this for python 2 because of script mode and MPI is only available for py3")
 @patch('sagemaker_containers.training_env')
 @patch('sagemaker_containers._mpi._setup_mpi_environment')
 @patch('sagemaker_containers._mpi._create_mpi_script')
