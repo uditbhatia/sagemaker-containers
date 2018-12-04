@@ -28,7 +28,7 @@ packages.append('sagemaker_containers.etc')
 packages.append('sagemaker_containers.bin')
 
 required_packages = [
-  'boto3', 'six', 'pip', 'flask', 'gunicorn', 'gevent', 'inotify_simple', 'werkzeug', 'retrying'
+    'boto3', 'six', 'pip', 'flask', 'gunicorn', 'gevent', 'inotify_simple', 'werkzeug', 'retrying'
 ]
 
 # enum is introduced in Python 3.4. Installing enum back port
@@ -46,7 +46,7 @@ setup(
         'sagemaker_containers.etc': 'etc',
         'sagemaker_containers.bin': 'bin'
     },
-    package_data={'sagemaker_containers.etc': ['*'],'sagemaker_containers.bin': ['*']},
+    package_data={'sagemaker_containers.etc': ['*'], 'sagemaker_containers.bin': ['*']},
     py_modules=[os.path.splitext(os.path.basename(path))[0] for path in glob('src/*.py')],
     long_description=read('README.md'),
     author='Amazon Web Services',
@@ -70,7 +70,7 @@ setup(
     },
 
     entry_points={
-          'console_scripts': ['serve=sagemaker_containers.cli.serve:main',
-                              'train=sagemaker_containers.cli.train:main'],
+        'console_scripts': ['serve=sagemaker_containers.cli.serve:main',
+                            'train=sagemaker_containers.cli.train:main'],
     }
 )

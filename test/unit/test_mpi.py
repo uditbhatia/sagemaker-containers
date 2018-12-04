@@ -13,13 +13,12 @@
 import socket
 import sys
 
-from mock import call, MagicMock, mock, patch, mock_open
+from mock import call, MagicMock, mock, mock_open, patch
 import pytest
 from six import PY2
 
 from sagemaker_containers import _errors, _mpi
-from sagemaker_containers._mpi import _change_hostname, _create_mpi_script, _setup_mpi_environment, _start_ssh_daemon, \
-    mpi_run, MPIMaster, MPIWorker, CHANGE_HOSTNAME_FILE_PATH, MPI_FILES_DIR
+from sagemaker_containers._mpi import MPIMaster, MPIWorker
 
 builtins_open = '__builtin__.open' if PY2 else 'builtins.open'
 _TEST_MPI_SCRIPT_PATH = "/tmp/mpi_script_path"
@@ -30,15 +29,15 @@ def test_change_hostname(os_system):
     """Unit tests the ``_change_hostname`` method executes the change-hostname.sh script with valid host or not."""
 
     host = "any_host"
-    _change_hostname(host)
-    os_system.assert_called_with("{} {} {}".format(CHANGE_HOSTNAME_FILE_PATH, host, MPI_FILES_DIR))
+    _mpi._change_hostname(host)
+    os_system.assert_called_with("{} {} {}".format(_mpi.CHANGE_HOSTNAME_FILE_PATH, host, _mpi.MPI_FILES_DIR))
 
 
 @patch("subprocess.Popen")
 def test_start_ssh_daemon(subprocess_popen):
     """Unit tests the ``_start_ssh_daemon`` method to verify it is executing the ssh deamon or not"""
 
-    _start_ssh_daemon()
+    _mpi._start_ssh_daemon()
     subprocess_popen.assert_called_with(["/usr/sbin/sshd", "-D"])
 
 
@@ -52,10 +51,10 @@ def test_setup_mpi_environment(start_ssh_daemon, change_hostname, mock_os_mkdirs
     mock_env = mock_training_env()
     mock_os_path_exist.return_value = False
 
-    _setup_mpi_environment(mock_env.current_host)
+    _mpi._setup_mpi_environment(mock_env.current_host)
 
-    mock_os_path_exist.assert_called_with(MPI_FILES_DIR)
-    mock_os_mkdirs.assert_called_with(MPI_FILES_DIR)
+    mock_os_path_exist.assert_called_with(_mpi.MPI_FILES_DIR)
+    mock_os_mkdirs.assert_called_with(_mpi.MPI_FILES_DIR)
     change_hostname.assert_called_with(current_host=mock_env.current_host)
     start_ssh_daemon.assert_called()
 
@@ -79,12 +78,10 @@ def test_create_mpi_script():
     """
 
     mpi_script_path = "/tmp/mpi_script.sh"
-    _create_mpi_script(args=["--sample", "arg1", "--sample2", "1"],
-                       train_script="train.py",
-                       code_dir="/opt/ml/code",
-                       mpi_script_path=mpi_script_path,
-                       mpi_is_running_flag_file="/tmp/mpi_is_running",
-                       mpi_is_finished_flag_file="/tmp/mpi_is_finished")
+    _mpi._create_mpi_script(args=["--sample", "arg1", "--sample2", "1"], train_script="train.py",
+                            code_dir="/opt/ml/code", mpi_script_path=mpi_script_path,
+                            mpi_is_running_flag_file="/tmp/mpi_is_running",
+                            mpi_is_finished_flag_file="/tmp/mpi_is_finished")
 
     with open(mpi_script_path, 'r') as mpi_script_file:
         content = mpi_script_file.read()
@@ -270,7 +267,7 @@ def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environm
 
     mock_env_generator.return_value = mock_env
 
-    mpi_run(train_script, code_dir, args, env_vars, wait, capture_error)
+    _mpi.mpi_run(train_script, code_dir, args, env_vars, wait, capture_error)
 
     assert _setup_mpi_environment.call_count == 1
     _create_mpi_script.assert_called_with(args, train_script, code_dir, _mpi._MPI_SCRIPT,
@@ -304,7 +301,7 @@ def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup
 
     mock_env_generator.return_value = mock_env
 
-    mpi_run(train_script, code_dir, args, env_vars, wait, capture_error)
+    _mpi.mpi_run(train_script, code_dir, args, env_vars, wait, capture_error)
 
     assert _setup_mpi_environment.call_count == 1
     _create_mpi_script.assert_called_with(args, train_script, code_dir, _mpi._MPI_SCRIPT,

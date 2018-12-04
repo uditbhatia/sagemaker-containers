@@ -13,7 +13,6 @@
 import collections
 import json
 import logging
-import netifaces
 import os
 import tarfile
 import time
@@ -21,6 +20,7 @@ import time
 import boto3
 import pytest
 import sagemaker
+import netifaces
 import six
 import werkzeug.test as werkzeug_test
 

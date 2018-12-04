@@ -13,16 +13,15 @@
 from __future__ import absolute_import
 
 import errno
-import socket
-
 import importlib
 import os
 import shlex
+import socket
 import subprocess
 
+from mock import patch
 import numpy as np
 import pytest
-from mock import patch
 
 import sagemaker_containers
 from sagemaker_containers.beta.framework import entry_point, env, errors, functions, modules, trainer

@@ -12,7 +12,6 @@
 # language governing permissions and limitations under the License.
 import argparse
 import os
-import pkg_resources
 import shlex
 import socket
 import stat
@@ -20,6 +19,7 @@ import subprocess
 import sys
 import time
 
+import pkg_resources
 from retrying import retry
 
 import sagemaker_containers
@@ -36,7 +36,7 @@ MPI_FILES_DIR = "/tmp/sm_mpi"
 _MPI_SCRIPT = "/tmp/sm_mpi/mpi_script.sh"
 _MPI_IS_RUNNING = "/tmp/sm_mpi/mpi_is_running"
 _MPI_IS_FINISHED = "/tmp/sm_mpi/mpi_is_finished"
-_CHANGE_HOSTNAME_LIBRARY = "/libchangehostname.so"
+_CHANGE_HOSTNAME_LIBRARY = "/tmp/sm_mpi/libchangehostname.so"
 
 _MPI_COMMAND_TEMPLATE = "mpirun --host {}" \
                         + " -np {} " \
