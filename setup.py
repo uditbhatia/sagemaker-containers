@@ -66,7 +66,7 @@ setup(
     install_requires=required_packages,
 
     extras_require={
-        'test': ['tox', 'flake8', 'pytest', 'pytest-cov', 'mock', 'sagemaker', 'numpy']
+        'test': ['tox', 'flake8', 'pytest', 'pytest-cov', 'mock', 'sagemaker', 'numpy', 'netifaces', 'mpi4py']
     },
 
     entry_points={

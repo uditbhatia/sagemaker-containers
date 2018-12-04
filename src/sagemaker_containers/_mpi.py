@@ -28,12 +28,14 @@ from sagemaker_containers import _errors, _logging, _params, _process, _timeout
 logger = _logging.get_logger()
 
 CHANGE_HOSTNAME_FILE_PATH = pkg_resources.resource_filename(sagemaker_containers.__name__, '/bin/change-hostname.sh')
+
 SSHD_EXECUTABLE_PATH = '/usr/sbin/sshd'
 
 # MPI files.
-_MPI_SCRIPT = "/mpi_script.sh"
-_MPI_IS_RUNNING = "/mpi_is_running"
-_MPI_IS_FINISHED = "/mpi_is_finished"
+MPI_FILES_DIR = "/tmp/sm_mpi"
+_MPI_SCRIPT = "/tmp/sm_mpi/mpi_script.sh"
+_MPI_IS_RUNNING = "/tmp/sm_mpi/mpi_is_running"
+_MPI_IS_FINISHED = "/tmp/sm_mpi/mpi_is_finished"
 _CHANGE_HOSTNAME_LIBRARY = "/libchangehostname.so"
 
 _MPI_COMMAND_TEMPLATE = "mpirun --host {}" \
@@ -85,7 +87,7 @@ def _change_hostname(current_host):  # type: (str) -> None
     Args:
         current_host (str): name of the current host, such as algo-1, algo-2, etc.
     """
-    os.system("{} {}".format(CHANGE_HOSTNAME_FILE_PATH, current_host))
+    os.system("{} {} {}".format(CHANGE_HOSTNAME_FILE_PATH, current_host, MPI_FILES_DIR))
 
 
 def _start_ssh_daemon():  # type: () -> None
@@ -103,6 +105,8 @@ def _setup_mpi_environment(current_host):  # type: (str) -> None
        Args:
            current_host (str): Current host name.
     """
+    if not os.path.exists(MPI_FILES_DIR):
+        os.makedirs(MPI_FILES_DIR)
     _change_hostname(current_host=current_host)
     _start_ssh_daemon()
 
@@ -329,6 +333,7 @@ def mpi_run(train_script, code_dir, args, env_vars, wait,
                 .format(train_script, code_dir, num_of_processes_per_host, custom_mpi_options))
 
     _setup_mpi_environment(env.current_host)
+
     _create_mpi_script(args, train_script, code_dir, _MPI_SCRIPT, _MPI_IS_RUNNING, _MPI_IS_FINISHED)
 
     mpi_master = MPIMaster(env, num_of_processes_per_host, _MPI_SCRIPT, custom_mpi_options)

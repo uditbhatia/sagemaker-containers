@@ -19,7 +19,7 @@ from six import PY2
 
 from sagemaker_containers import _errors, _mpi
 from sagemaker_containers._mpi import _change_hostname, _create_mpi_script, _setup_mpi_environment, _start_ssh_daemon, \
-    mpi_run, MPIMaster, MPIWorker
+    mpi_run, MPIMaster, MPIWorker, CHANGE_HOSTNAME_FILE_PATH, MPI_FILES_DIR
 
 builtins_open = '__builtin__.open' if PY2 else 'builtins.open'
 _TEST_MPI_SCRIPT_PATH = "/tmp/mpi_script_path"
@@ -31,7 +31,7 @@ def test_change_hostname(os_system):
 
     host = "any_host"
     _change_hostname(host)
-    os_system.assert_called_with("/change-hostname.sh {}".format(host))
+    os_system.assert_called_with("{} {} {}".format(CHANGE_HOSTNAME_FILE_PATH, host, MPI_FILES_DIR))
 
 
 @patch("subprocess.Popen")
@@ -42,13 +42,20 @@ def test_start_ssh_daemon(subprocess_popen):
     subprocess_popen.assert_called_with(["/usr/sbin/sshd", "-D"])
 
 
+@patch('os.path.exists')
+@patch('os.makedirs')
 @patch('sagemaker_containers._mpi._change_hostname')
 @patch('sagemaker_containers._mpi._start_ssh_daemon')
-def test_setup_mpi_environment(start_ssh_daemon, change_hostname):
+def test_setup_mpi_environment(start_ssh_daemon, change_hostname, mock_os_mkdirs, mock_os_path_exist):
     """Unit tests the ``_setup_mpi_environment`` method to verify all steps are performed for mpi setup"""
 
     mock_env = mock_training_env()
+    mock_os_path_exist.return_value = False
+
     _setup_mpi_environment(mock_env.current_host)
+
+    mock_os_path_exist.assert_called_with(MPI_FILES_DIR)
+    mock_os_mkdirs.assert_called_with(MPI_FILES_DIR)
     change_hostname.assert_called_with(current_host=mock_env.current_host)
     start_ssh_daemon.assert_called()
 
