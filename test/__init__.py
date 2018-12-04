@@ -18,9 +18,9 @@ import tarfile
 import time
 
 import boto3
+import netifaces
 import pytest
 import sagemaker
-import netifaces
 import six
 import werkzeug.test as werkzeug_test
 
