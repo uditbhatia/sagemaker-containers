@@ -72,7 +72,7 @@ You can install ssh by running following commands:
 apt-get update && apt-get install -y --no-install-recommends openssh-server && mkdir -p /var/run/sshd
 
 2. SSH login fix. Otherwise user is kicked off after login:
-sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+sed 's@session\\s*required\\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
 
 3. Create SSH key to allow password less ssh between diffferent docker instances:
 mkdir -p /root/.ssh/ && ssh-keygen -q -t rsa -N '' -f /root/.ssh/id_rsa && \

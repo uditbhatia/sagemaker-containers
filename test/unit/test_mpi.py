@@ -180,7 +180,8 @@ def test_build_mpi_command():
                           "-mca btl_tcp_if_include ethwe -mca oob_tcp_if_include ethwe " \
                           "-x NCCL_SOCKET_IFNAME=ethwe --mca plm_rsh_no_tree_spawn 1 " \
                           "-mca orte_abort_on_non_zero_status 1 " \
-                          "-x NCCL_DEBUG=WARN -x LD_LIBRARY_PATH -x PATH -x LD_PRELOAD=/libchangehostname.so " \
+                          "-x NCCL_DEBUG=WARN -x LD_LIBRARY_PATH -x PATH " \
+                          "-x LD_PRELOAD=/tmp/sm_mpi/libchangehostname.so " \
                           "--Dummy dummyvalue %s" % _TEST_MPI_SCRIPT_PATH
 
 
