@@ -12,6 +12,7 @@
 # language governing permissions and limitations under the License.
 import argparse
 import os
+import pkg_resources
 import shlex
 import socket
 import stat
@@ -26,20 +27,30 @@ from sagemaker_containers import _errors, _logging, _params, _process, _timeout
 
 logger = _logging.get_logger()
 
-MPI_COMMAND_TEMPLATE = "mpirun --host {}" \
-                       + " -np {} " \
-                       + " --allow-run-as-root" \
-                       + " --display-map" \
-                       + " --tag-output" \
-                       + " -mca btl_tcp_if_include {}" \
-                       + " -mca oob_tcp_if_include {}" \
-                       + " -x NCCL_SOCKET_IFNAME={}" \
-                       + " --mca plm_rsh_no_tree_spawn 1" \
-                       + " -mca orte_abort_on_non_zero_status 1" \
-                       + " -x NCCL_DEBUG={}" \
-                       + " -x LD_LIBRARY_PATH -x PATH" \
-                       + " -x LD_PRELOAD={}" \
-                       + " {}"
+CHANGE_HOSTNAME_FILE_PATH = pkg_resources.resource_filename(sagemaker_containers.__name__, '/bin/change-hostname.sh')
+SSHD_EXECUTABLE_PATH = '/usr/sbin/sshd'
+
+# MPI files.
+_MPI_SCRIPT = "/mpi_script.sh"
+_MPI_IS_RUNNING = "/mpi_is_running"
+_MPI_IS_FINISHED = "/mpi_is_finished"
+_CHANGE_HOSTNAME_LIBRARY = "/libchangehostname.so"
+
+_MPI_COMMAND_TEMPLATE = "mpirun --host {}" \
+                        + " -np {} " \
+                        + " --allow-run-as-root" \
+                        + " --display-map" \
+                        + " --tag-output" \
+                        + " -mca btl_tcp_if_include {}" \
+                        + " -mca oob_tcp_if_include {}" \
+                        + " -x NCCL_SOCKET_IFNAME={}" \
+                        + " --mca plm_rsh_no_tree_spawn 1" \
+                        + " -mca orte_abort_on_non_zero_status 1" \
+                        + " -x NCCL_DEBUG={}" \
+                        + " -x LD_LIBRARY_PATH -x PATH" \
+                        + " -x LD_PRELOAD={}" \
+                        + " {}"
+
 _MPI_SCRIPT_TEMPLATE = """#!/usr/bin/env bash
 touch %s
 %s
@@ -48,11 +59,24 @@ touch %s
 exit ${EXIT_CODE}
 """
 
-# MPI files.
-_MPI_SCRIPT = "/mpi_script.sh"
-_MPI_IS_RUNNING = "/mpi_is_running"
-_MPI_IS_FINISHED = "/mpi_is_finished"
-_CHANGE_HOSTNAME_LIBRARY = "/libchangehostname.so"
+_SSH_DEAMON_NOT_FOUND_ERROR_MESSAGE = """
+SSH deamon not found, please install SSH to allow MPI to communicate different nodes in cluster.
+
+You can install ssh by running following commands:
+-------------------------------------------------
+
+1. Install SSH via apt-get:
+
+apt-get update && apt-get install -y --no-install-recommends openssh-server && mkdir -p /var/run/sshd
+
+2. SSH login fix. Otherwise user is kicked off after login:
+sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+
+3. Create SSH key to allow password less ssh between diffferent docker instances:
+mkdir -p /root/.ssh/ && ssh-keygen -q -t rsa -N '' -f /root/.ssh/id_rsa && \
+  cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys && \
+  printf "Host *\n  StrictHostKeyChecking no\n" >> /root/.ssh/config
+"""
 
 
 def _change_hostname(current_host):  # type: (str) -> None
@@ -61,13 +85,17 @@ def _change_hostname(current_host):  # type: (str) -> None
     Args:
         current_host (str): name of the current host, such as algo-1, algo-2, etc.
     """
-    os.system("/change-hostname.sh {}".format(current_host))
+    os.system("{} {}".format(CHANGE_HOSTNAME_FILE_PATH, current_host))
 
 
 def _start_ssh_daemon():  # type: () -> None
     """Starts the ssh deamon
     """
-    subprocess.Popen(["/usr/sbin/sshd", "-D"])
+    exists = os.path.isfile(SSHD_EXECUTABLE_PATH)
+    if not exists:
+        raise RuntimeError(_SSH_DEAMON_NOT_FOUND_ERROR_MESSAGE)
+
+    subprocess.Popen([SSHD_EXECUTABLE_PATH, "-D"])
 
 
 def _setup_mpi_environment(current_host):  # type: (str) -> None
@@ -173,6 +201,7 @@ class MPIMaster(object):
             logger.info('Running user script:\n\n%s', f.read())
 
         logger.info("Executing mpi command with wait: {} capture_error: {}".format(wait, capture_error))
+
         if wait:
             return _process.check_error(cmd, _errors.ExecuteUserScriptError, capture_error=capture_error)
 
@@ -211,9 +240,9 @@ class MPIMaster(object):
 
         logger.info("Network interface name: {}".format(interface_name))
 
-        mpi_command = MPI_COMMAND_TEMPLATE.format(",".join(host_list), num_processes, interface_name, interface_name,
-                                                  interface_name, overriden_known_options.NCCL_DEBUG,
-                                                  _CHANGE_HOSTNAME_LIBRARY, " ".join(additional_options))
+        mpi_command = _MPI_COMMAND_TEMPLATE.format(",".join(host_list), num_processes, interface_name, interface_name,
+                                                   interface_name, overriden_known_options.NCCL_DEBUG,
+                                                   _CHANGE_HOSTNAME_LIBRARY, " ".join(additional_options))
 
         credential_vars = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN']
         for v in credential_vars:

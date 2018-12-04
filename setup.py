@@ -25,6 +25,7 @@ def read(file_name):
 
 packages = find_packages(where='src', exclude=('test',))
 packages.append('sagemaker_containers.etc')
+packages.append('sagemaker_containers.bin')
 
 required_packages = [
   'boto3', 'six', 'pip', 'flask', 'gunicorn', 'gevent', 'inotify_simple', 'werkzeug', 'retrying'
@@ -42,9 +43,10 @@ setup(
     packages=packages,
     package_dir={
         'sagemaker_containers': 'src/sagemaker_containers',
-        'sagemaker_containers.etc': 'etc'
+        'sagemaker_containers.etc': 'etc',
+        'sagemaker_containers.bin': 'bin'
     },
-    package_data={'sagemaker_containers.etc': ['*']},
+    package_data={'sagemaker_containers.etc': ['*'],'sagemaker_containers.bin': ['*']},
     py_modules=[os.path.splitext(os.path.basename(path))[0] for path in glob('src/*.py')],
     long_description=read('README.md'),
     author='Amazon Web Services',
