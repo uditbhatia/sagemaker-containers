@@ -27,7 +27,7 @@ from sagemaker_containers import _errors, _logging, _params, _process, _timeout
 
 logger = _logging.get_logger()
 
-CHANGE_HOSTNAME_FILE_PATH = pkg_resources.resource_filename(sagemaker_containers.__name__, '/bin/change-hostname.sh')
+_CHANGE_HOSTNAME_FILE_PATH = pkg_resources.resource_filename(sagemaker_containers.__name__, '/bin/change-hostname.sh')
 
 SSHD_EXECUTABLE_PATH = '/usr/sbin/sshd'
 
@@ -87,7 +87,7 @@ def _change_hostname(current_host):  # type: (str) -> None
     Args:
         current_host (str): name of the current host, such as algo-1, algo-2, etc.
     """
-    os.system("{} {} {}".format(CHANGE_HOSTNAME_FILE_PATH, current_host, MPI_FILES_DIR))
+    os.system("{} {} {}".format(_CHANGE_HOSTNAME_FILE_PATH, current_host, MPI_FILES_DIR))
 
 
 def _start_ssh_daemon():  # type: () -> None
@@ -161,6 +161,14 @@ def _create_mpi_script(args, train_script, code_dir, mpi_script_path, mpi_is_run
     logger.info("MPI script created at: {}".format(mpi_script_path))
 
 
+def is_master(hosts, current_host):  # type: (list, str) -> bool
+    """Checks if the current host is master or worker.
+    """
+    _is_master = current_host == sorted(list(hosts))[0]
+    logger.info("Is current host: {} among hosts: {} master: {}".format(current_host, hosts, _is_master))
+    return _is_master
+
+
 class MPIMaster(object):
     """MPI Master, defines all the operations that are executed at the master node to execute MPI job. It coordinates
         with worker nodes to see if they are ready for MPI, then builds the MPI command and execute it to launch job on
@@ -184,12 +192,13 @@ class MPIMaster(object):
                                              timeout_in_seconds=180):  # type: (list, int, int) -> None
         """Wait for worker nodes to start their ssh deamon to allow MPI communication.
         """
+        _hosts = hosts[:]
         with _timeout.timeout(seconds=timeout_in_seconds):
-            while hosts:
-                for host in hosts:
+            while _hosts:
+                for host in _hosts:
                     ssh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     if _can_connect(host, 22, ssh_socket):
-                        hosts.remove(host)
+                        _hosts.remove(host)
                 time.sleep(interval)
             logger.info("Worker node available for communication: {}".format(len(hosts) == 0))
 
@@ -260,13 +269,6 @@ class MPIMaster(object):
 
         return mpi_command
 
-    def is_master(self, hosts, current_host):  # type: (list, str) -> bool
-        """Checks if the current host is master or worker.
-        """
-        _is_master = current_host == sorted(list(hosts))[0]
-        logger.info("Is current host: {} among hosts: {} master: {}".format(current_host, hosts, _is_master))
-        return _is_master
-
     def run(self, wait, capture_error):  # type: (bool, bool) -> None
         """Executes the master's node operation
             Args:
@@ -275,7 +277,7 @@ class MPIMaster(object):
                 capture_error (bool): Default false. If True, the running process captures the
                     stderr, and appends it to the returned Exception message in case of errors.
         """
-        self._wait_for_worker_nodes_to_start_sshd(self.env.hosts[:])
+        self._wait_for_worker_nodes_to_start_sshd(self.env.hosts)
         self._run_mpi_on_all_nodes(wait, capture_error)
 
 
@@ -337,7 +339,7 @@ def mpi_run(train_script, code_dir, args, env_vars, wait,
     _create_mpi_script(args, train_script, code_dir, _MPI_SCRIPT, _MPI_IS_RUNNING, _MPI_IS_FINISHED)
 
     mpi_master = MPIMaster(env, num_of_processes_per_host, _MPI_SCRIPT, custom_mpi_options)
-    if mpi_master.is_master(env.hosts, env.current_host):
+    if is_master(env.hosts, env.current_host):
         logger.info("Inside Master")
         mpi_master.run(wait, capture_error)
     else:

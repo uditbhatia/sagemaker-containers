@@ -10,6 +10,7 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+import pkg_resources
 import socket
 import sys
 
@@ -17,6 +18,7 @@ from mock import call, MagicMock, mock, mock_open, patch
 import pytest
 from six import PY2
 
+import sagemaker_containers
 from sagemaker_containers import _errors, _mpi
 from sagemaker_containers._mpi import MPIMaster, MPIWorker
 
@@ -30,7 +32,9 @@ def test_change_hostname(os_system):
 
     host = "any_host"
     _mpi._change_hostname(host)
-    os_system.assert_called_with("{} {} {}".format(_mpi.CHANGE_HOSTNAME_FILE_PATH, host, _mpi.MPI_FILES_DIR))
+    os_system.assert_called_with(
+        "{} {} {}".format(pkg_resources.resource_filename(sagemaker_containers.__name__, '/bin/change-hostname.sh'),
+                          host, _mpi.MPI_FILES_DIR))
 
 
 @patch("subprocess.Popen")
@@ -148,10 +152,6 @@ def test_run_mpi_on_all_nodes(_log_script_invocation, _process_create, _process_
     cmd = "mpirun -np 2"
     _build_mpi_command.return_value = cmd
 
-    my_mock = mock.MagicMock()
-    manager = my_mock.return_value.__enter__.return_value
-    manager.read.return_value = 'some data'
-
     mock_env = mock_training_env()
     mpi_master = MPIMaster(env=mock_env,
                            process_per_host=1,
@@ -186,13 +186,8 @@ def test_build_mpi_command():
 
 
 def test_is_master():
-    mpi_master = MPIMaster(env=mock_training_env(),
-                           process_per_host=1,
-                           mpi_script_path=_TEST_MPI_SCRIPT_PATH,
-                           custom_mpi_options="")
-
-    assert mpi_master.is_master(["algo-1", "algo-2"], "algo-1")
-    assert not mpi_master.is_master(["algo-1", "algo-2"], "algo-2")
+    assert _mpi.is_master(["algo-1", "algo-2"], "algo-1")
+    assert not _mpi.is_master(["algo-1", "algo-2"], "algo-2")
 
 
 @patch('sagemaker_containers._mpi.MPIMaster._wait_for_worker_nodes_to_start_sshd')
@@ -283,12 +278,13 @@ def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environm
 @patch('sagemaker_containers._mpi._create_mpi_script')
 @patch('sagemaker_containers._mpi.MPIMaster', autospec=True)
 @patch('sagemaker_containers._mpi.MPIWorker', autospec=True)
+@patch('sagemaker_containers._mpi.is_master')
 @pytest.mark.parametrize('train_script, code_dir, args, env_vars, wait, capture_error',
                          [("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, True, False),
                           ("train1.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, True, True),
                           ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, False),
                           ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, True)])
-def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup_mpi_environment, mock_env_generator,
+def test_mpi_run_for_worker(mock_is_master, mock_worker, mock_master, _create_mpi_script, _setup_mpi_environment, mock_env_generator,
                             train_script, code_dir, args, env_vars, wait, capture_error):
     mock_num_of_processes_per_host = MagicMock()
     mock_custom_mpi_options = MagicMock()
@@ -296,7 +292,7 @@ def test_mpi_run_for_worker(mock_worker, mock_master, _create_mpi_script, _setup
     mock_env.additional_framework_parameters.get.side_effect = [mock_num_of_processes_per_host, mock_custom_mpi_options]
 
     mock_master_instance = mock_master.return_value
-    mock_master_instance.is_master.side_effect = [False]
+    mock_is_master.side_effect = [False]
 
     mock_worker_instance = mock_worker.return_value
 

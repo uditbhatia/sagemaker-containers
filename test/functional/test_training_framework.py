@@ -449,7 +449,10 @@ def execute_an_wrap_exit(fn, **kargs):
 @patch("sagemaker_containers._mpi._can_connect")
 @pytest.mark.parametrize('user_script, training_fn, capture_error, save_model_assertion', [
     [MPI_USER_MODE_SCRIPT_BASIC, mpi_training_with_script_mode_fn, False, False],
-    [MPI_USER_MODE_SCRIPT, mpi_training_with_script_mode_fn, False, True]])
+    # Disabling this test as it requires mpi4py and build system hosts dosent have mpi installed. @mvs said he will
+    # look into it.
+    # [MPI_USER_MODE_SCRIPT, mpi_training_with_script_mode_fn, False, True]
+])
 def test_script_mode_mpi_local_directory(mock_can_connect, user_script, training_fn, capture_error, tmpdir,
                                          save_model_assertion):
     channel = test.Channel.create(name='training')
