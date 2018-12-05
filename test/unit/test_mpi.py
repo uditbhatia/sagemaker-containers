@@ -12,9 +12,9 @@
 # language governing permissions and limitations under the License.
 import socket
 import sys
-import pkg_resources
 
 from mock import call, MagicMock, mock_open, patch
+import pkg_resources
 import pytest
 from six import PY2
 

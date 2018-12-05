@@ -16,7 +16,7 @@ import enum
 import os
 import sys
 
-from sagemaker_containers import _env, _errors, _files, _logging, _modules, _process, _mpi
+from sagemaker_containers import _env, _errors, _files, _logging, _modules, _mpi, _process
 
 
 def run(uri, user_entry_point, args, env_vars=None, wait=True, capture_error=False, mpi_enabled=False):
