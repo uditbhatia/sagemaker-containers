@@ -169,22 +169,6 @@ def test_run_mpi_on_all_nodes(_log_script_invocation, _process_create, _process_
         _process_create.assert_called_with(cmd.split(), _errors.ExecuteUserScriptError, capture_error=capture_error)
 
 
-def test_build_mpi_command():
-    mpi_master = MPIMaster(env=mock_training_env(),
-                           process_per_host=1,
-                           custom_mpi_options="--NCCL_DEBUG WARN --Dummy dummyvalue",
-                           mpi_script_path=_TEST_MPI_SCRIPT_PATH)
-    mpi_command = mpi_master._build_mpi_command()
-
-    assert mpi_command.startswith("mpirun --host algo-1 -np 1  --allow-run-as-root --display-map --tag-output " \
-                                   "-mca btl_tcp_if_include ethwe -mca oob_tcp_if_include ethwe " \
-                                   "-x NCCL_SOCKET_IFNAME=ethwe --mca plm_rsh_no_tree_spawn 1 " \
-                                   "-mca orte_abort_on_non_zero_status 1 " \
-                                   "-x NCCL_DEBUG=WARN -x LD_LIBRARY_PATH -x PATH " \
-                                   "-x LD_PRELOAD=/tmp/sm_mpi/libchangehostname.so " \
-                                   "--Dummy dummyvalue")
-
-
 def test_is_master():
     assert _mpi.is_master(["algo-1", "algo-2"], "algo-1")
     assert not _mpi.is_master(["algo-1", "algo-2"], "algo-2")
