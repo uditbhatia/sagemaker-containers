@@ -10,11 +10,11 @@
 # distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-import pkg_resources
 import socket
 import sys
+import pkg_resources
 
-from mock import call, MagicMock, mock, mock_open, patch
+from mock import call, MagicMock, mock_open, patch
 import pytest
 from six import PY2
 
@@ -176,13 +176,13 @@ def test_build_mpi_command():
                            mpi_script_path=_TEST_MPI_SCRIPT_PATH)
     mpi_command = mpi_master._build_mpi_command()
 
-    assert mpi_command == "mpirun --host algo-1 -np 1  --allow-run-as-root --display-map --tag-output " \
-                          "-mca btl_tcp_if_include ethwe -mca oob_tcp_if_include ethwe " \
-                          "-x NCCL_SOCKET_IFNAME=ethwe --mca plm_rsh_no_tree_spawn 1 " \
-                          "-mca orte_abort_on_non_zero_status 1 " \
-                          "-x NCCL_DEBUG=WARN -x LD_LIBRARY_PATH -x PATH " \
-                          "-x LD_PRELOAD=/tmp/sm_mpi/libchangehostname.so " \
-                          "--Dummy dummyvalue %s" % _TEST_MPI_SCRIPT_PATH
+    assert mpi_command.startswith("mpirun --host algo-1 -np 1  --allow-run-as-root --display-map --tag-output " \
+                                   "-mca btl_tcp_if_include ethwe -mca oob_tcp_if_include ethwe " \
+                                   "-x NCCL_SOCKET_IFNAME=ethwe --mca plm_rsh_no_tree_spawn 1 " \
+                                   "-mca orte_abort_on_non_zero_status 1 " \
+                                   "-x NCCL_DEBUG=WARN -x LD_LIBRARY_PATH -x PATH " \
+                                   "-x LD_PRELOAD=/tmp/sm_mpi/libchangehostname.so " \
+                                   "--Dummy dummyvalue")
 
 
 def test_is_master():
@@ -284,7 +284,8 @@ def test_mpi_run_for_master(mock_master, _create_mpi_script, _setup_mpi_environm
                           ("train1.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, True, True),
                           ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, False),
                           ("train.py", "/opt/ml/code", ["--sample", "arg1"], {"SM_SAMPLE": "VAL1"}, False, True)])
-def test_mpi_run_for_worker(mock_is_master, mock_worker, mock_master, _create_mpi_script, _setup_mpi_environment, mock_env_generator,
+def test_mpi_run_for_worker(mock_is_master, mock_worker, mock_master, _create_mpi_script, _setup_mpi_environment,
+                            mock_env_generator,
                             train_script, code_dir, args, env_vars, wait, capture_error):
     mock_num_of_processes_per_host = MagicMock()
     mock_custom_mpi_options = MagicMock()

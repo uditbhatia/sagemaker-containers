@@ -29,7 +29,9 @@ logger = _logging.get_logger()
 
 _CHANGE_HOSTNAME_FILE_PATH = pkg_resources.resource_filename(sagemaker_containers.__name__, '/bin/change-hostname.sh')
 
-SSHD_EXECUTABLE_PATH = '/usr/sbin/sshd'
+_SSHD_EXECUTABLE_PATH = '/usr/sbin/sshd'
+
+_SKIP_ENV_VARS_TO_COPY_IN_MPIRUN = ["SM_CURRENT_HOST"]
 
 # MPI files.
 MPI_FILES_DIR = "/tmp/sm_mpi"
@@ -93,11 +95,11 @@ def _change_hostname(current_host):  # type: (str) -> None
 def _start_ssh_daemon():  # type: () -> None
     """Starts the ssh deamon
     """
-    exists = os.path.isfile(SSHD_EXECUTABLE_PATH)
+    exists = os.path.isfile(_SSHD_EXECUTABLE_PATH)
     if not exists:
         raise RuntimeError(_SSH_DEAMON_NOT_FOUND_ERROR_MESSAGE)
 
-    subprocess.Popen([SSHD_EXECUTABLE_PATH, "-D"])
+    subprocess.Popen([_SSHD_EXECUTABLE_PATH, "-D"])
 
 
 def _setup_mpi_environment(current_host):  # type: (str) -> None
@@ -263,7 +265,8 @@ class MPIMaster(object):
                 mpi_command += " -x {}".format(v)
 
         for name, value in self.env.to_env_vars().items():
-            mpi_command += ' -x {}="{}"'.format(name, value)
+            if name not in _SKIP_ENV_VARS_TO_COPY_IN_MPIRUN:
+                mpi_command += ' -x {}="{}"'.format(name, value)
 
         mpi_command += " {}".format(self.mpi_script_path)
 
